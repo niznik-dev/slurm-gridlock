@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Slurm Queue Traffic Report</title>
+<style>
+:root{
+  color-scheme: light;
+  --wall:#E4E7E6; --surface:#FFFFFF; --ink:#1C2024; --muted:#56606A; --line:#C4CACE;
+  --rubber:#2F3337; --asphalt:#33373C; --console:#0D0F11; --led-dim:#3B4148;
+  --sign:#0E6A3D; --lane:#F2C230; --plate:#FAFAF6;
+  --red:#C92F2A; --blue:#2361A8; --yellow:#D69500; --green:#2C9554; --grey:#848D95; --orange:#E2641C; --purple:#7A4FC4; --teal:#12817F; --magenta:#C2387F; --lime:#6E9A12; --cyan:#0B93B4;
+  --red-led:#FF5A4F; --blue-led:#5FA8FF; --yellow-led:#FFB52E; --green-led:#3FE07F; --grey-led:#8E98A1; --cyan-led:#5FE3FF;
+  --focus:#2361A8;
+  --head:"Overpass","Highway Gothic","Roadgeek 2005","Avenir Next Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --led:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --wall:#141719; --surface:#1E2226; --ink:#E6E9EB; --muted:#9AA3AB; --line:#353B42;
+    --rubber:#353A40; --asphalt:#2B2F34; --console:#0B0D0F; --led-dim:#2C3137;
+    --sign:#11704A; --plate:#ECEEE8;
+    --red:#E5574F; --blue:#5B95DD; --yellow:#E8AE2C; --green:#4DB97A; --grey:#7D8790; --orange:#F2843E; --purple:#A585E8; --teal:#3BB3AE; --magenta:#E36BA8; --lime:#A3CF3A; --cyan:#4CC9E6;
+    --focus:#7FB2F0;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --wall:#141719; --surface:#1E2226; --ink:#E6E9EB; --muted:#9AA3AB; --line:#353B42;
+  --rubber:#353A40; --asphalt:#2B2F34; --console:#0B0D0F; --led-dim:#2C3137;
+  --sign:#11704A; --plate:#ECEEE8;
+  --red:#E5574F; --blue:#5B95DD; --yellow:#E8AE2C; --green:#4DB97A; --grey:#7D8790; --orange:#F2843E; --purple:#A585E8; --teal:#3BB3AE; --magenta:#E36BA8; --lime:#A3CF3A; --cyan:#4CC9E6;
+  --focus:#7FB2F0;
+}
+:root{ box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+*,*::before,*::after{ box-sizing:inherit; }
+html{ scroll-padding-top:env(safe-area-inset-top,0px); }
+body{ margin:0; background:var(--wall); color:var(--ink); font:16px/1.55 var(--body); -webkit-font-smoothing:antialiased; }
+.wrap{ max-width:820px; margin:0 auto; padding:0 20px; }
+h1,h2,h3{ font-family:var(--head); font-stretch:condensed; line-height:1.08; margin:0; }
+h1{ font-size:clamp(2.4rem,7vw,4rem); font-weight:800; letter-spacing:-.01em; }
+h2{ font-size:1.65rem; font-weight:800; margin-bottom:.4rem; }
+h3{ font-size:1.2rem; font-weight:700; }
+p{ margin:.5rem 0; max-width:68ch; }
+a{ color:var(--blue); }
+code,pre{ font-family:var(--led); font-size:.86rem; }
+:focus-visible{ outline:3px solid var(--focus); outline-offset:2px; }
+button,.btn{ font:600 .95rem var(--body); color:#fff; background:var(--rubber); border:0; border-radius:6px; padding:.6rem 1rem; cursor:pointer; display:inline-block; }
+button:hover,.btn:hover{ filter:brightness(1.15); }
+button.link{ background:none; color:var(--blue); padding:0; text-decoration:underline; font-weight:600; }
+.muted{ color:var(--muted); }
+.small{ font-size:.88rem; }
+
+/* top strip: asphalt with a double yellow line */
+.top{ background:var(--asphalt); color:#fff; position:relative; }
+.top::after,footer::before{ content:""; display:block; height:10px; background:linear-gradient(var(--lane) 0 3px, var(--asphalt) 3px 7px, var(--lane) 7px 10px); }
+.top .wrap{ display:flex; justify-content:space-between; align-items:center; padding-top:.7rem; padding-bottom:.7rem; }
+.brand{ font:800 1.15rem var(--head); font-stretch:condensed; margin:0; }
+.top button{ background:transparent; border:1px solid #fff4; padding:.35rem .7rem; font-size:.85rem; }
+.top .wrap{ flex-wrap:wrap; gap:.6rem 1rem; }
+.credits{ margin-left:auto; text-align:right; font-size:.78rem; line-height:1.3; color:#fffb; }
+.credits strong{ font-family:var(--head); font-weight:700; letter-spacing:.06em; font-size:.92rem; color:#fff; }
+.credits a{ color:inherit; }
+/* eastbound lane under the double yellow */
+.lane-e{ position:relative; height:var(--lane-h, 58px); overflow:hidden; background:var(--asphalt); border-bottom:3px solid #fffc; }
+.lane-e svg{ position:absolute; left:0; top:calc(50% - 11px); width:44px; height:22px; will-change:transform; }
+.lane-e svg.car{ cursor:default; }
+.lane-e .ufo{ width:52px; height:52px; top:calc(50% - 26px); z-index:2; pointer-events:none; }
+.lane-e .ufo .lt{ fill:#FFE36E; animation:ufoLt .5s steps(1) infinite; } .lane-e .ufo .lt:nth-of-type(even){ animation-delay:.25s; }
+.lane-e .beam{ position:absolute; z-index:0; width:64px; height:64px; top:calc(50% - 32px); border-radius:50%; background:radial-gradient(circle, #B6FF9Bcc 0 35%, #B6FF9B00 70%); pointer-events:none; }
+.lane-e svg.car{ z-index:1; }
+@keyframes ufoLt{ 50%{ fill:#7DF0FF; } }
+.lane-e .gls{ fill:#cfe3f2; opacity:.85; } .lane-e .roof{ fill:#0003; } .lane-e .hl{ fill:#FFE9A6; } .lane-e .tl{ fill:#FF5A4F; } .lane-e .mir{ fill:#0006; }
+
+.hero{ padding:2.4rem 0 0; }
+.sign{ background:var(--sign); color:#fff; border-radius:16px; padding:1.5rem 1.8rem; box-shadow:inset 0 0 0 6px var(--sign), inset 0 0 0 9px #fff; }
+.hero-sign h1{ color:#fff; white-space:nowrap; }
+.sign .dest{ display:flex; align-items:baseline; gap:.6rem; margin:.9rem 0 0; padding-top:.7rem; border-top:3px solid #fff; font:700 1.35rem var(--head); font-stretch:condensed; }
+.sign .dest-key{ margin:.25rem 0 0; font:400 .78rem var(--body); opacity:.85; text-align:right; }
+.dest .mi{ margin-left:auto; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sign p{ margin:.2rem 0; max-width:none; }
+.colm{ display:inline-block; padding:1rem 1.5rem; margin-bottom:1rem; font:700 1.15rem var(--head); }
+.colm .small{ font:400 .9rem var(--body); opacity:.9; }
+.colm a{ color:#A8F0C0; text-decoration-thickness:2px; text-underline-offset:3px; }
+.lede{ font-size:1.15rem; color:var(--muted); margin-top:1rem; }
+
+section.block{ margin:2.6rem 0; }
+.steps{ list-style:none; counter-reset:s; padding:0; margin:1.2rem 0 0; }
+.steps>li{ counter-increment:s; position:relative; padding:0 0 1.4rem 3.4rem; }
+.steps>li:last-child{ padding-bottom:0; }
+#load{ margin:1.6rem 0 1.8rem; }
+.steps{ margin-top:0; }
+.steps>li::before{ content:counter(s); position:absolute; left:0; top:-.15rem; width:2.4rem; height:2.4rem; border-radius:7px; background:var(--sign); color:#fff; font:800 1.25rem/2.4rem var(--head); text-align:center; box-shadow:inset 0 0 0 2px var(--sign), inset 0 0 0 4px #fff; }
+.cmd{ position:relative; background:var(--console); color:#D6DCE1; border-radius:8px; margin-top:.7rem; }
+.cmd pre{ margin:0; padding:1rem 1rem 3.2rem; overflow-x:auto; white-space:pre; line-height:1.5; }
+.cmd button{ position:absolute; right:.6rem; bottom:.6rem; background:var(--yellow); color:#1D2227; }
+.drop{ margin-top:.8rem; border:2px dashed var(--line); border-radius:10px; padding:1.4rem; background:var(--surface); display:flex; flex-wrap:wrap; gap:.8rem; align-items:center; }
+.drop.over{ border-color:var(--blue); background:color-mix(in srgb,var(--blue) 8%,var(--surface)); }
+.drop input{ position:absolute; width:1px; height:1px; opacity:0; }
+textarea{ width:100%; min-height:9rem; font:.82rem var(--led); background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:.7rem; margin:.5rem 0; }
+details summary{ cursor:pointer; color:var(--blue); font-weight:600; margin-top:.8rem; }
+#status{ font-weight:600; margin-top:.8rem; }
+#status:empty{ display:none; }
+#status.err{ color:var(--red); }
+.inline-form{ display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem; }
+input[type=text],input[type=number],select{ font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:.45rem .6rem; }
+
+/* overhead message sign: dot-matrix LED panel */
+.console{ background-color:var(--console); background-image:radial-gradient(#ffffff0c 1px, transparent 1.4px); background-size:6px 6px; border-radius:6px; color:#C9D1D8; padding:1rem 1.2rem; border:4px solid #5A6066; }
+.readout{ font:700 2.4rem/1 var(--led); font-variant-numeric:tabular-nums; letter-spacing:.02em; text-shadow:0 0 12px currentColor; }
+.led-green{ color:var(--green-led); } .led-blue{ color:var(--blue-led); } .led-yellow{ color:var(--yellow-led); } .led-red{ color:var(--red-led); } .led-open{ color:var(--cyan-led); } .led-grey{ color:var(--grey-led); text-shadow:none; }
+.consoles{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-top:1rem; }
+.console .cap{ font-size:.85rem; color:#9AA5AE; margin:.1rem 0 .5rem; }
+.console .sub{ font-size:.88rem; color:#C9D1D8; margin-top:.6rem; }
+
+/* job verdict cards */
+.job{ background:var(--surface); border-left:6px solid var(--grey); border-radius:4px 10px 10px 4px; padding:1.1rem 1.2rem; margin:1rem 0; }
+.job{ border-left-color:var(--c,var(--grey)); }
+.job .meta{ color:var(--muted); font-size:.88rem; margin:0; }
+.job .verdict{ font:700 1.3rem/1.25 var(--head); font-stretch:condensed; margin:.35rem 0 .6rem; max-width:none; }
+.bar{ display:flex; height:22px; border-radius:4px; overflow:hidden; background:color-mix(in srgb,var(--line) 55%,transparent); margin:.6rem 0 .3rem; }
+.bar span{ display:block; height:100%; }
+.f-age{ background:var(--purple); } .f-fs{ background:var(--teal); } .f-qos{ background:var(--orange); } .f-other{ background:var(--grey); } /* categories, so kept off the green→red status colors */
+.legend{ display:flex; flex-wrap:wrap; gap:.3rem 1rem; font-size:.85rem; color:var(--muted); margin:0; padding:0; list-style:none; }
+.legend i{ display:inline-block; width:.75rem; height:.75rem; border-radius:2px; margin-right:.35rem; vertical-align:-1px; }
+.tip{ margin-top:.7rem; padding:.6rem .8rem; border-radius:6px; background:color-mix(in srgb,var(--green) 12%,var(--surface)); font-size:.95rem; }
+.warn{ background:color-mix(in srgb,var(--yellow) 16%,var(--surface)); }
+
+/* treadmill rows */
+.tabs{ display:flex; flex-wrap:wrap; gap:.4rem; margin:.8rem 0; }
+.tabs button{ background:var(--surface); color:var(--ink); border:1px solid var(--line); }
+.tabs button[aria-selected="true"]{ background:var(--rubber); color:#fff; border-color:var(--rubber); }
+.level{ background:var(--surface); border-radius:10px; padding:1rem 1.1rem; margin:1rem 0; }
+.level h3 .muted{ font-weight:600; }
+.mills{ list-style:none; margin:.8rem 0 0; padding:0; }
+.mill{ display:grid; grid-template-columns:2.6rem 64px 1fr auto; align-items:center; gap:.7rem; padding:.35rem .4rem; border-radius:6px; }
+.mill.you{ background:color-mix(in srgb,var(--yellow) 18%,transparent); box-shadow:inset 0 0 0 2px var(--yellow); }
+.mill .rank{ font:700 .95rem var(--led); color:var(--muted); text-align:right; }
+.mill .who{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mill .who b{ font-weight:700; }
+.mill .lcd{ background:var(--console); border-radius:4px; padding:.15rem .45rem; font:700 .95rem var(--led); font-variant-numeric:tabular-nums; min-width:5.6rem; text-align:right; }
+.gap{ text-align:center; color:var(--muted); font-size:.85rem; padding:.1rem; list-style:none; }
+svg.tm{ width:64px; height:30px; display:block; }
+svg.tm .road{ fill:var(--asphalt); }
+svg.tm .glass{ fill:#ffffffb0; }
+svg.tm .belt{ stroke:#ffffffaa; stroke-width:1.5; stroke-dasharray:6 6; fill:none; animation:belt .9s linear infinite; }
+svg.tm .carg{ transform-box:fill-box; transform-origin:center; }
+svg.tm .hz,svg.tm .smoke{ display:none; }
+@keyframes belt{ to{ stroke-dashoffset:24; } }
+/* green: quick and smooth */
+.st-green .body{ fill:var(--green); } svg.tm.st-green .belt{ animation-duration:.45s; }
+/* blue: steady cruise */
+.st-blue .body{ fill:var(--blue); } svg.tm.st-blue .belt{ animation-duration:.8s; }
+/* yellow: labouring, with an occasional sputter (period --sp) */
+.st-yellow .body{ fill:var(--yellow); } svg.tm.st-yellow .belt{ animation-duration:1.6s; }
+.st-yellow .carg{ animation:sputter var(--sp,4s) linear infinite; }
+@keyframes sputter{
+  0%,78%,100%{ transform:none; }
+  80%{ transform:translate(calc(-1px * var(--amp,.6)),0) rotate(calc(-1deg * var(--amp,.6))); }
+  84%{ transform:translate(calc(1px * var(--amp,.6)),-.4px) rotate(calc(1deg * var(--amp,.6))); }
+  88%{ transform:translate(calc(-1px * var(--amp,.6)),.3px); }
+  92%{ transform:none; } }
+svg.tm.st-yellow .smoke.s1{ display:block; fill:#C4CAD0; transform-box:fill-box; transform-origin:center; opacity:0; animation:puffOnce var(--sp,4s) ease-out infinite; }
+@keyframes puffOnce{ 0%,79%{ opacity:0; transform:scale(.4); } 81%{ opacity:.7; transform:scale(.5); } 96%,100%{ opacity:0; transform:translate(-8px,-9px) scale(1.4); } }
+/* red: constant shake, smoke and hazards, all scaled by how far over share (log) */
+.st-red .body,.st-noshare .body{ fill:color-mix(in srgb, var(--red), #1a0000 var(--shade,0%)); }
+svg.tm .flame{ display:none; }
+svg.tm.onfire .flame{ display:block; transform-box:fill-box; transform-origin:50% 100%; animation:flicker .16s steps(2) infinite; }
+svg.tm .flame .fo{ fill:#FF6A1A; } svg.tm .flame .fi{ fill:#FFD84A; }
+@keyframes flicker{ 0%{ transform:scale(var(--flame,1), var(--flame,1)); } 50%{ transform:scale(calc(var(--flame,1) * .85), calc(var(--flame,1) * 1.2)); } }
+svg.tm.st-red .belt,svg.tm.st-noshare .belt{ animation:belt var(--beltr,2.6s) linear infinite; }
+.st-red .carg{ animation:jitter var(--jit,.4s) steps(2) infinite; }
+@keyframes jitter{ 0%{ transform:translate(calc(-.8px * var(--amp,1)),calc(.4px * var(--amp,1))) rotate(calc(-1deg * var(--amp,1))); } 50%{ transform:translate(calc(.8px * var(--amp,1)),calc(-.5px * var(--amp,1))) rotate(calc(1deg * var(--amp,1))); } }
+svg.tm.st-red .hz,svg.tm.st-noshare .hz{ display:block; fill:#FFB52E; animation:hazard var(--haz,.8s) steps(1) infinite; }
+@keyframes hazard{ 50%{ fill:transparent; } }
+svg.tm.st-red .smoke{ display:block; fill:#B9C0C6; transform-box:fill-box; transform-origin:center; animation:smoke var(--smk,1.5s) ease-out infinite; opacity:0; }
+svg.tm.st-red .smoke.s2{ animation-delay:calc(var(--smk,1.5s) / 3); } svg.tm.st-red .smoke.s3{ animation-delay:calc(var(--smk,1.5s) * 2 / 3); }
+@keyframes smoke{ 0%{ opacity:.85; transform:translate(0,0) scale(.5); } 100%{ opacity:0; transform:translate(-9px,-11px) scale(1.6); } }
+/* easter egg: no-share groups ride a bicycle */
+svg.tm.bike .wheel{ fill:none; stroke:#D7DCE0; stroke-width:1.4; }
+svg.tm.bike .spoke{ stroke:#D7DCE0; stroke-width:.9; transform-box:fill-box; transform-origin:center; animation:spin 1.6s linear infinite; }
+svg.tm.bike .frame{ fill:none; stroke:var(--red); stroke-width:1.6; stroke-linejoin:round; stroke-linecap:round; }
+svg.tm.bike .crank{ stroke:#D7DCE0; stroke-width:1.4; stroke-linecap:round; transform-box:fill-box; transform-origin:center; animation:spin 1.6s linear infinite; }
+svg.tm.bike .person{ fill:none; stroke:var(--lane); stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+svg.tm.bike .head{ fill:var(--lane); }
+svg.tm.bike .rider{ animation:pedal 1.6s ease-in-out infinite; }
+svg.tm.st-noshare.bike .belt{ animation:belt 6s linear infinite; }
+@keyframes spin{ to{ transform:rotate(360deg); } }
+@keyframes pedal{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-.6px); } }
+@media (prefers-reduced-motion: reduce){ svg.tm.bike .spoke,svg.tm.bike .crank,svg.tm.bike .rider{ animation:none !important; } }
+/* car park for 0% */
+svg.tm.park .lot{ fill:color-mix(in srgb,var(--asphalt) 82%,var(--cyan)); }
+svg.tm.park .stall{ stroke:#ffffffcc; stroke-width:1.5; }
+svg.tm.park .curb{ stroke:#ffffffcc; stroke-width:2; }
+svg.tm.park .belt-still{ stroke:#ffffffaa; stroke-width:1.5; stroke-dasharray:6 6; }
+svg.tm.park .psign{ fill:#2361A8; stroke:#fff; stroke-width:1.2; }
+svg.tm.park .pletter{ fill:#fff; font:800 11px var(--body); }
+svg.tm.park .body{ fill:var(--cyan); }
+@media (prefers-reduced-motion: reduce){ svg.tm .belt,svg.tm .carg,svg.tm .hz,svg.tm .smoke,svg.tm .flame{ animation:none !important; } svg.tm .smoke{ opacity:.5; } }
+.showall{ margin-top:.6rem; }
+
+/* sign-up sheet */
+.sheet{ background:var(--surface); border-radius:10px; padding:1rem; overflow-x:auto; }
+.sheet svg{ width:100%; min-width:520px; height:auto; display:block; }
+.marks{ list-style:none; padding:0; margin:.6rem 0 0; font-size:.92rem; }
+.marks li{ margin:.2rem 0; }
+
+table{ border-collapse:collapse; width:100%; font-size:.93rem; }
+th,td{ text-align:left; padding:.45rem .5rem; border-bottom:1px solid var(--line); vertical-align:top; }
+th{ font-weight:700; }
+td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+.tablewrap{ overflow-x:auto; background:var(--surface); border-radius:10px; padding:.4rem .8rem; }
+.levers{ list-style:none; padding:0; margin:0; }
+.levers{ background:var(--surface); border-radius:10px; padding:.4rem 1.1rem; }
+.levers>li{ display:grid; grid-template-columns:2rem 1fr; gap:.5rem; align-items:start; padding:.65rem 0; border-bottom:1px solid var(--line); }
+.levers>li:last-child{ border-bottom:0; }
+.levers .emoji{ font-size:1.35rem; line-height:1.3; text-align:center; }
+
+.calc{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:.8rem; background:var(--surface); border-radius:10px; padding:1rem; }
+.calc label{ display:flex; flex-direction:column; font-size:.88rem; font-weight:600; gap:.25rem; }
+#priceOut{ margin-top:1rem; }
+.split{ margin-bottom:.6rem; }
+.split-row{ display:grid; grid-template-columns:10rem 1fr; gap:.8rem; align-items:center; margin:.5rem 0; }
+.split-label{ display:flex; flex-direction:column; line-height:1.25; }
+.split-bar{ display:flex; height:30px; border-radius:6px; overflow:hidden; background:color-mix(in srgb,var(--line) 50%,transparent); }
+.split-bar span{ display:flex; align-items:center; padding:0 .45rem; color:#fff; font:700 .8rem var(--body); white-space:nowrap; overflow:hidden; border-right:2px solid var(--surface); }
+.split-legend{ margin:.3rem 0 .4rem; }
+.sheet-sub{ margin:1.3rem 0 .5rem; }
+.gloss-box>summary{ cursor:pointer; list-style:none; display:flex; flex-direction:column; gap:.15rem; background:var(--surface); border-radius:10px; padding:.9rem 1.1rem; border:1px solid var(--line); }
+.gloss-box>summary::-webkit-details-marker{ display:none; }
+.gloss-title{ font:800 1.35rem var(--head); }
+.gloss-title::after{ content:" ▸"; color:var(--muted); }
+.gloss-box[open] .gloss-title::after{ content:" ▾"; }
+.gloss-box .tablewrap{ margin-top:.6rem; }
+@media (max-width:560px){ .split-row{ grid-template-columns:1fr; gap:.3rem; } }
+#tollBox>summary{ list-style:none; cursor:pointer; display:flex; flex-direction:column; gap:.2rem; color:#fff; margin:0; }
+#tollBox>summary::-webkit-details-marker{ display:none; }
+#tollBox>summary::after{ content:"Open"; position:absolute; right:1.4rem; top:50%; transform:translateY(-50%); font:700 .85rem var(--body); background:#fff; color:var(--sign); border-radius:999px; padding:.25rem .7rem; }
+#tollBox[open]>summary::after{ content:"Close"; }
+.toll-sign{ position:relative; padding-right:6.5rem; }
+.toll-title{ font:800 1.45rem/1.15 var(--head); }
+.toll-sub{ font-size:.95rem; opacity:.92; }
+.toll-body{ padding-top:1rem; }
+button.tollbtn{ margin-top:.8rem; background:var(--sign); }
+
+footer{ margin:4rem 0 0; padding-bottom:2rem; color:var(--muted); font-size:.9rem; }
+footer::before{ margin-bottom:1.6rem; }
+footer .wrap>p{ font-size:.8rem; }
+.my-car{ display:block; margin-top:.5rem; white-space:nowrap; } .my-car svg{ width:2.6em; height:1.3em; vertical-align:-.32em; margin-right:.4em; } footer .wrap>p.small{ font-size:.74rem; }
+.viewing{ background:var(--rubber); color:#fff; border-radius:8px; padding:.6rem .9rem; font-weight:600; max-width:none; }
+.viewing b{ color:var(--yellow-led); }
+#alt input{ min-width:12rem; }
+#alt{ margin-top:.35rem; }
+#rumble{ display:inline-flex; gap:.1rem; margin-top:.8rem; padding:.1rem .2rem; font-size:.9rem; opacity:.28; filter:grayscale(1); border-radius:4px; user-select:none; -webkit-user-select:none; touch-action:manipulation; }
+#rumble:hover,#rumble:focus-visible,#rumble.hot,#rumble.on{ opacity:.85; filter:none; }
+#rumble .t{ display:inline-block; position:relative; transition:transform .8s cubic-bezier(.15,.7,.3,1); }
+#rumble .t.r1{ animation:rk1 .1s linear 4; }
+#rumble .t.r2{ animation:rk2 .16s linear infinite; }
+#rumble .t.r2::after{ content:"💨"; position:absolute; left:-1.1em; top:0; animation:rk3 .6s ease-out infinite; }
+@keyframes rk1{ 0%,100%{ translate:0 0; } 50%{ translate:1px -1px; } }
+@keyframes rk2{ to{ transform:rotate(360deg); } }
+@keyframes rk3{ from{ opacity:.9; transform:translateX(0) scale(.6); } to{ opacity:0; transform:translateX(-.8em) scale(1.3); } }
+@media (prefers-reduced-motion: reduce){ #rumble .t{ transition:none; } #rumble .t.r1,#rumble .t.r2,#rumble .t.r2::after{ animation:none; } }
+#altM.err{ color:var(--red); }
+.jgroup{ background:var(--surface); border-left:6px solid var(--grey); border-radius:4px 10px 10px 4px; padding:.9rem 1.1rem; margin:.8rem 0; }
+.jgroup.k-priority{ border-left-color:var(--red); } .jgroup.k-resources{ border-left-color:var(--blue); }
+.jgroup.k-limit,.jgroup.k-budget,.jgroup.k-oversize,.jgroup.k-held,.jgroup.k-dependency,.jgroup.k-begin,.jgroup.k-unavailable{ border-left-color:var(--yellow); }
+.jg-head{ display:flex; justify-content:space-between; align-items:baseline; gap:1rem; }
+.jg-count{ font:700 .95rem var(--led); color:var(--muted); white-space:nowrap; }
+.jgroup .meta{ color:var(--muted); font-size:.85rem; margin:.15rem 0 0; }
+.jg-why{ margin:.4rem 0 .2rem; }
+.dots{ display:flex; flex-wrap:wrap; gap:7px; margin:.6rem 0 .2rem; align-items:center; }
+button.dot{ width:16px; height:16px; padding:0; border-radius:50%; border:3px solid currentColor; background:currentColor; color:var(--grey); }
+button.dot.hollow{ background:transparent; }
+button.dot.chip{ width:auto; height:auto; min-width:3rem; border-radius:5px; border:2px solid var(--c,var(--grey)); border-top-width:6px; padding:.05rem .45rem .1rem; font:700 .8rem/1.3 var(--led); font-variant-numeric:tabular-nums; background:var(--plate); color:#1C2024; }
+button.dot.array{ border-radius:3px; }
+button.dot.chip.array{ box-shadow:4px -4px 0 -1px var(--plate), 4px -4px 0 1px var(--c,var(--grey)); margin:4px 4px 0 0; } /* a second plate behind: a convoy of tasks */
+button.dot.chip.hollow{ border-style:dashed; border-top-style:solid; background:transparent; color:var(--muted); }
+svg.lane{ width:100%; height:auto; display:block; margin:.7rem 0 .1rem; }
+svg.lane .car{ fill:var(--c,var(--lane)); stroke:#fff; stroke-width:2.5; }
+svg.lane .ghostcar{ opacity:.85; }
+svg.lane .ghost{ fill:#F2F1EC; }
+svg.lane .ghost-glass{ fill:#9DB4C6; }
+svg.lane .grass{ fill:#7E9A63; }
+:root[data-theme="dark"] svg.lane .grass{ fill:#3F5534; }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) svg.lane .grass{ fill:#3F5534; } }
+svg.lane .meter{ opacity:.22; }
+svg.lane .meter.red{ fill:#ff3b30; } svg.lane .meter.green{ fill:#30d158; }
+svg.lane .meter.lit{ opacity:1; filter:drop-shadow(0 0 4px currentColor); }
+svg.lane .meter.red.lit{ color:#ff3b30; } svg.lane .meter.green.lit{ color:#30d158; }
+svg.lane .traffic{ animation:traffic 5s linear infinite; } /* same 5 s cycle as the meter, so the gap meets the merging car */
+@keyframes traffic{ to{ transform:translateX(380px); } }
+svg.lane .ramp-top{ animation:rampStep 5s infinite; }
+@keyframes rampStep{ 0%,6%{ transform:translateX(0); } 30%,99.9%{ transform:translateX(26px); } 100%{ transform:translateX(0); } }
+svg.lane .merger{ animation:merge 5s infinite; }
+@keyframes merge{ 0%{ transform:translate(0,0); animation-timing-function:ease-in; } 30%{ transform:translate(100px,0); } 50%{ transform:translate(175px,-30px); } 60%{ transform:translate(200px,-41px); animation-timing-function:linear; } 82%,99.9%{ transform:translate(284px,-41px); } 100%{ transform:translate(0,0); } }
+svg.lane .meter.cycle{ filter:drop-shadow(0 0 4px currentColor); }
+svg.lane .meter.red.cycle{ color:#ff3b30; animation:meterRed 5s infinite; }
+svg.lane .meter.green.cycle{ color:#30d158; animation:meterGreen 5s infinite; }
+@keyframes meterRed{ 0%,11.9%{ opacity:.22; } 12%,100%{ opacity:1; } }
+@keyframes meterGreen{ 0%,11.9%{ opacity:1; } 12%,100%{ opacity:.22; } }
+@media (prefers-reduced-motion: reduce){ svg.lane .traffic,svg.lane .ramp-top,svg.lane .merger,svg.lane .meter.cycle{ animation:none; } svg.lane .meter.green.cycle{ opacity:.22; } }
+svg.lane .car.off{ fill:transparent; stroke:var(--c,var(--lane)); stroke-width:2; stroke-dasharray:3 2; }
+.place{ margin:.2rem 0 .4rem; }
+.place b{ font:700 1.05rem var(--led); }
+button.dot[aria-pressed="true"]{ outline:3px solid var(--ink); outline-offset:2px; }
+.k-priority{ --c:var(--red); } .k-resources{ --c:var(--blue); }
+.k-limit{ --c:var(--yellow); } .k-unavailable{ --c:var(--orange); } .k-dependency{ --c:var(--purple); } .k-begin{ --c:var(--teal); } .k-held{ --c:var(--magenta); } .k-other,.k-unknown{ --c:var(--lime); } .k-new{ --c:var(--cyan); } .k-oversize{ --c:var(--orange); } .k-budget{ --c:var(--yellow); }
+button.dot{ color:var(--c,var(--grey)); }
+.jgroup{ border-left-color:var(--rubber); }
+.reasons{ list-style:none; padding:0; margin:.5rem 0 .2rem; font-size:.95rem; }
+.reasons li{ margin:.35rem 0; padding-left:1.3rem; position:relative; }
+.swatch{ position:absolute; left:0; top:.3rem; width:.8rem; height:.8rem; border-radius:50%; background:var(--c,var(--grey)); }
+.jg-detail .job{ margin:.7rem 0 0; border-left-width:0; padding:.8rem 0 0; border-top:1px solid var(--line); border-radius:0; }
+.qosbar{ align-items:center; }
+.qosbar button{ background:var(--surface); color:var(--ink); border:1px solid var(--line); padding:.4rem .75rem; font-size:.88rem; }
+.qosbar button[aria-pressed="true"]{ background:var(--rubber); color:#fff; border-color:var(--rubber); }
+[hidden]{ display:none !important; }
+@media (max-width:560px){
+  .mill{ grid-template-columns:2.1rem 1fr auto; }
+  .mill svg.tm{ display:none; }
+  .steps>li{ padding-left:2.9rem; }
+}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <p class="brand">Slurm Queue Traffic Report</p>
+  <div class="credits">
+    <strong><a href="https://niznik-dev.github.io" target="_blank" rel="noopener">Mattie</a> &amp; <a href="https://docs.anthropic.com/en/docs/claude-code/overview" target="_blank" rel="noopener">Claude</a></strong><br>
+    <em>“It’s incredible what we can do.”</em>
+  </div>
+  <button id="themeBtn" type="button" aria-label="Switch light or dark mode">Light / dark</button>
+</div></header>
+<div class="lane-e" id="laneE" aria-hidden="true"></div>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="sign hero-sign">
+      <h1 id="signTitle">Why is my job still waiting?</h1>
+      <p class="dest"><span aria-hidden="true">↑</span><span>Front of the line</span><span id="signMi" class="mi" title="Load your report to see how far you are">? mi</span></p>
+      <p class="dest-key">1 mi = 1 job ahead of your best-placed job</p>
+    </div>
+    <p class="lede">The cluster is a shared highway, and groups that have been driving a lot lately merge last. Run one command to see where you stand. Nothing leaves this page.</p>
+  </section>
+
+  <section id="load" class="block" aria-labelledby="loadHead">
+    <h2 id="loadHead" hidden>Load your data</h2>
+    <ol class="steps">
+      <li>
+        <h3>Run this on the cluster</h3>
+        <p>Paste it into a terminal on a login node. It only reads scheduler information and saves it to <code>queue-report.txt</code> in your home folder.</p>
+        <p class="small muted">Not for jobs on the ailab or pli partitions. Their queues aren’t visible to everyone, so this report leaves them out.</p>
+        <div class="cmd"><pre id="cmd"></pre><button id="copyBtn" type="button">Copy command</button></div>
+        <div id="rumble" role="button" tabindex="0" aria-label="Tire barrier"><span class="t">🛞</span><span class="t">🛞</span><span class="t">🛞</span><span class="t">🛞</span><span class="t">🛞</span><span class="t">🛞</span><span class="t">🛞</span></div>
+      </li>
+      <li>
+        <h3>Bring the file here</h3>
+        <p>Download the file to your computer, using a web file browser such as Open OnDemand, or <code>scp CLUSTER-NAME:~/queue-report.txt .</code> from your laptop’s terminal, then open it here.</p>
+        <div id="drop" class="drop">
+          <label class="btn" for="file">Open file</label>
+          <input id="file" type="file" accept=".txt,text/plain">
+          <span class="muted">or drop it here</span>
+        </div>
+        <p class="small muted">Your file is read inside this tab and never sent anywhere. You can check: turn off Wi-Fi once this page has loaded, and everything still works.</p>
+        <p class="small">No cluster handy? <button id="demoBtn" class="link" type="button">Try it with made-up data</button></p>
+      </li>
+    </ol>
+    <div id="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <div id="results" hidden>
+    <section class="block" aria-labelledby="sumHead">
+      <p id="viewingAs" class="viewing"></p>
+      <h2 id="sumHead">Your spot in the merge order</h2>
+      <p class="muted">You get one merge score per account you can submit under, from 0 to 1. Higher merges sooner.</p>
+      <div id="summary" class="consoles"></div>
+    </section>
+
+    <section class="block" aria-labelledby="jobsHead">
+      <h2 id="jobsHead">Your jobs in traffic</h2>
+      <div id="jobsBody"></div>
+    </section>
+
+    <section class="block toll" aria-labelledby="priceHead">
+      <details id="tollBox">
+        <summary class="sign toll-sign"><span id="priceHead" class="toll-title">🧾 Check the toll before you drive</span><span class="toll-sub">See what a job would add to your record, and where it’s cheapest.</span></summary>
+        <div class="toll-body">
+          <p>Every job adds to your group's driving record, and some vehicles pay far more toll than others. Try a request, or open one of your jobs above and choose “Check this job’s toll.”</p>
+          <div class="calc">
+            <label>Lane (partition)<select id="pPart"></select></label>
+            <label>GPUs<input id="pGpu" type="number" min="0" step="1" value="1"></label>
+            <label>CPU cores<input id="pCpu" type="number" min="1" step="1" value="8"></label>
+            <label>Memory (GB)<input id="pMem" type="number" min="1" step="1" value="32"></label>
+            <label id="pQosWrap">Trip type (QOS)<select id="pQos"></select></label>
+            <label>Hours<input id="pHrs" type="number" min="0.25" step="0.25" value="4"></label>
+            <label>See the effect on<select id="pAcct"></select></label>
+          </div>
+          <p id="prefillNote" class="small muted" hidden></p>
+          <div id="priceOut"></div>
+        </div>
+      </details>
+    </section>
+
+    <section class="block" aria-labelledby="lineHead">
+      <h2 id="lineHead">How the merge order is decided</h2>
+      <p>The scheduler lets traffic merge one level at a time. Departments take turns first, then the groups inside each department, then the people inside each group. Your group's place comes before your own, so a group that has been driving a lot lately holds every member back.</p>
+      <p class="small muted">Each reading shows how much of its share that group or person has been driving lately. Groups under their share cruise along smoothly. The further over they go, the more their car sputters and smokes, like it’s overdue for the shop. Groups with no recent driving wait in the car park, first to merge.</p>
+      <div id="tabs" class="tabs" role="tablist" aria-label="Your accounts"></div>
+      <div id="lineBody"></div>
+    </section>
+
+    <section class="block" aria-labelledby="sheetHead">
+      <h2 id="sheetHead">The whole highway at once</h2>
+      <p>First, how the road is split between the big pools, and how much each has actually been driving. Then everyone on the cluster in merge order, earliest on the left.</p>
+      <div id="sheetBody" class="sheet"></div>
+    </section>
+
+    <section class="block" aria-labelledby="leverHead">
+      <h2 id="leverHead">What you can do about it</h2>
+      <ul id="leversBody" class="levers"></ul>
+    </section>
+
+  </div>
+
+  <section class="block" aria-labelledby="glossHead">
+    <details class="gloss-box">
+      <summary><span id="glossHead" class="gloss-title">Traffic talk, Slurm talk</span><span class="small muted">Every road word on this page and the real scheduler term behind it.</span></summary>
+      <div class="tablewrap"><table id="gloss"><thead><tr><th>On this page</th><th>Slurm term</th><th>What it means</th></tr></thead><tbody></tbody></table></div>
+    </details>
+  </section>
+</main>
+
+<footer><div class="wrap">
+  <div class="sign colm"><p>Traffic theme suggested by <a href="https://github.com/ColmTalbot" target="_blank" rel="noopener">Colm</a>.</p><p class="small">Thanks for paving the way, Colm.</p></div>
+  <p>Slurm Queue Traffic Report reads your file inside this browser tab. There is no server, no tracking, and nothing is saved after you close or refresh the page.</p>
+  <p>It’s a simplified picture built from what Slurm shows every user, so treat the numbers as close estimates, not an audit. Groups with their own private queues may be missing or undercounted.</p>
+  <p>It explains priority, not start time. A job at the front of the line can still wait for enough free hardware, and the scheduler can let small jobs slip through gaps around big ones.</p>
+  <p class="small">Every car in the header is a Subaru Legacy in factory paint. Mattie drives one, and this is a fair and unbiased traffic report. Here’s to the sedan: low, sensible, and quietly leaving the highway one exit at a time.<span class="my-car"><a href="https://en.wikipedia.org/wiki/Subaru_Legacy" target="_blank" rel="noopener"><svg viewBox="0 0 44 22" role="img" aria-label="Absol, Mattie’s white Subaru Legacy, approximately (opens the Wikipedia article on the Subaru Legacy)"><title>Absol, Mattie’s Subaru Legacy (approximately)</title><rect x="25" y="0" width="3" height="3" rx="1" fill="#0006"/><rect x="25" y="19" width="3" height="3" rx="1" fill="#0006"/><rect x="1" y="2" width="42" height="18" rx="6" fill="#F2F1EC" stroke="#56606A" stroke-width=".8"/><rect x="13" y="5" width="11" height="12" rx="2" fill="#0002"/><path d="M24 5.5 L29 4.5 Q31.5 11 29 17.5 L24 16.5 Q25.5 11 24 5.5 Z M13 6 L9.5 5.5 Q8 11 9.5 16.5 L13 16 Q12 11 13 6 Z" fill="#9DB4C6"/><rect x="41" y="4" width="2" height="3.5" rx="1" fill="#E8C55A"/><rect x="41" y="14.5" width="2" height="3.5" rx="1" fill="#E8C55A"/><rect x="1" y="4" width="1.6" height="3" rx=".8" fill="#C92F2A"/><rect x="1" y="15" width="1.6" height="3" rx=".8" fill="#C92F2A"/></svg></a><em><a href="https://bulbapedia.bulbagarden.net/wiki/Absol_(Pok%C3%A9mon)" target="_blank" rel="noopener">Absol</a>, Mattie’s Legacy (approximately)</em></span></p>
+</div></footer>
+<script>
+'use strict';
+/* ===== Theme words live here so the metaphor can be swapped in one place ===== */
+const THEME = {
+  status: {
+    open:   { label: 'Car park',   note: "is sitting in the car park with no recent driving, so it merges ahead of anyone who has driven" },
+    green:  { label: 'Light',      note: 'is driving well under its share' },
+    blue:   { label: 'Cruising',   note: 'is driving about its share' },
+    yellow: { label: 'Heavy',      note: 'is driving more than its share' },
+    red:    { label: 'Gridlock',   note: 'is driving far more than its share' },
+    noshare:{ label: 'No share',   note: 'has no share of the road at this level, so any driving at all counts as over' },
+  },
+  factors: { age: 'Time idling in traffic', fs: 'Fairshare bonus', qos: 'Trip type', other: 'Other (job size, partition, site)' },
+  gloss: [
+    ['Lane', 'Partition', 'A set of nodes with its own line of waiting jobs. Lanes that share nodes can still cut in.'],
+    ['Share of the road', 'Shares (RawShares, NormShares)', 'How much of the cluster a group is entitled to, set by the cluster admins.'],
+    ['Recent driving', 'Usage (RawUsage, EffectvUsage)', 'How much a group has used lately. Old miles fade on a half-life, so the record slowly clears.'],
+    ['Usage reading', 'LevelFS (inverted)', 'Recent driving as a percentage of share. Under 100% is good; over 100% pushes you back.'],
+    ['Car park · Light · Cruising · Heavy · Gridlock', 'LevelFS bands', 'Usage readings from no recent driving, through under, about, and over share, to far over it.'],
+    ['Merge order', 'Fair Tree ordering', 'Everyone sorted level by level: top-level accounts, then groups inside them, then people inside groups.'],
+    ['No share', 'RawShares = 0', 'A group given no share by the admins. It merges behind every neighbor that has one.'],
+    ['Priority points', 'Job priority', 'A waiting job’s total score: time idling + fairshare bonus + trip type + other. Within a lane, higher goes first.'],
+    ['Merge score', 'FairShare factor', 'Your standing in the merge order as a number from 0 to 1. Higher merges earlier.'],
+    ['Fairshare bonus', 'Fairshare priority', 'The priority points your merge score adds to each job: merge score × the cluster’s fairshare weight.'],
+    ['Time idling in traffic', 'Age factor', 'Priority a job earns just by waiting, up to a cap.'],
+    ['Trip type', 'QOS', 'A category tied to your request (often the time limit) that adds a fixed amount of priority.'],
+    ['Toll', 'TRES billing weights', 'How fast a job adds to usage. A GPU usually costs far more than a CPU core.'],
+    ['Waiting for room on the road', 'Reason: Resources', "Your job is near the front, but there isn't enough free hardware yet."],
+    ['Stuck behind higher-priority traffic', 'Reason: Priority', 'Jobs with more priority points are ahead of yours.'],
+    ['Engine off', 'Not accruing age', 'A job that isn’t earning waiting-time priority, usually because of a hold, a dependency, or an accrue limit.'],
+  ],
+};
+
+const USER_OK = /^[A-Za-z0-9._-]{1,64}$/; // usernames go into a shell command, so allow nothing else
+function buildCommand(user) {
+  const u = user ? `U='${user}'` : 'U="$USER"';
+  const file = user ? `~/queue-report-${user}.txt` : '~/queue-report.txt';
+  return `${u}
+{ echo "### WHOAMI"; echo "$U"; echo "### VIEWER"; echo "$USER"
+  echo "### CONFIG"; scontrol show config | grep -E '^(Priority|PrivateData)'
+  echo "### SPRIO_W"; sprio -w
+  echo "### PENDING"; squeue -u "$U" -t PD -h -o '%i|%P|%a|%q|%l|%D|%C|%b|%m|%r|%V'
+  echo "### SPRIO"; sprio -l -u "$U"
+  echo "### QUEUE"; squeue -r -t PD -h -o '%i|%P|%Q|%r'
+  echo "### PARTITIONS"; scontrol show partition | grep -E 'PartitionName|TRESBillingWeights'
+  echo "### QOS"; sacctmgr -nP show qos format=name,priority,usagefactor
+  echo "### SSHARE"; sshare -l -a -P
+  echo "### END"
+} > ${file} 2>/dev/null; echo "Saved ${file}"`;
+}
+let COMMAND = buildCommand('');
+
+/* ===== small helpers (no innerHTML with data, ever) ===== */
+const $ = (s, r = document) => r.querySelector(s);
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k === 'style') e.setAttribute('style', v);
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) { if (k == null || k === false) continue; e.append(k instanceof Node ? k : document.createTextNode(String(k))); }
+  return e;
+}
+const SVGNS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs) { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); return e; }
+const num = s => { if (s == null) return NaN; s = String(s).trim(); if (s === '') return NaN; if (/^inf/i.test(s)) return Infinity; return parseFloat(s); };
+const fmt = (n, d = 0) => Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: 0 }) : '—';
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const plural = (n, w) => `${fmt(n)} ${w}${n === 1 ? '' : 's'}`;
+function parseDuration(s) { // D-HH:MM:SS or HH:MM:SS -> days
+  if (!s) return NaN; const m = String(s).match(/^(?:(\d+)-)?(\d+):(\d+):(\d+)/); if (!m) return NaN;
+  return (+(m[1] || 0)) + (+m[2]) / 24 + (+m[3]) / 1440 + (+m[4]) / 86400;
+}
+
+/* ===== parsing ===== */
+function splitSections(text) {
+  const out = {}; let cur = null;
+  for (const line of text.replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n')) { // a BOM (Windows editors) would hide the first header
+    const m = line.match(/^###\s+([A-Z_]+)\s*$/);
+    if (m) { cur = m[1]; out[cur] = []; continue; }
+    if (cur) out[cur].push(line);
+  }
+  if (!Object.keys(out).length && /Account\|User\|RawShares/.test(text)) out.SSHARE = text.replace(/\r/g, '').split('\n');
+  return out;
+}
+function parseConfig(lines) { const c = {}; for (const l of lines || []) { const m = l.match(/^(\w+)\s*=\s*(.*)$/); if (m) c[m[1]] = m[2].trim(); } return c; }
+function parseSprioW(lines) {
+  lines = lines || []; const hi = lines.findIndex(l => /\bPRIORITY\b/.test(l)); const wi = lines.findIndex(l => /^\s*Weights\b/.test(l));
+  if (hi < 0 || wi < 0) return {};
+  const h = lines[hi].trim().split(/\s+/); const v = lines[wi].trim().split(/\s+/).slice(1);
+  const hs = h.slice(h.indexOf('PRIORITY') + 1); const w = {}; hs.forEach((k, i) => { if (v[i] != null) w[k] = v[i]; }); return w;
+}
+function parseSprio(lines) {
+  lines = lines || []; const hi = lines.findIndex(l => /\bJOBID\b/.test(l) && /\bPRIORITY\b/.test(l)); if (hi < 0) return {};
+  const h = lines[hi].trim().split(/\s+/); let seen = 0;
+  const keys = h.map(k => k === 'PARTITION' ? (seen++ ? 'PARTITION_F' : 'PARTITION') : k);
+  const jobs = {};
+  for (const l of lines.slice(hi + 1)) {
+    const f = l.trim().split(/\s+/); if (f.length < 5 || !/^\d/.test(f[0])) continue;
+    const r = {}; keys.forEach((k, i) => r[k] = f[i]); jobs[r.JOBID] = r;
+  }
+  return jobs;
+}
+function parsePending(lines) {
+  const out = [];
+  for (const l of lines || []) {
+    const f = l.split('|'); if (f.length < 10 || !/^\d/.test(f[0].trim())) continue;
+    out.push({ id: f[0].trim(), partition: f[1], account: f[2], qos: f[3], limit: f[4], nodes: +f[5], cpus: +f[6], gres: f[7], mem: f[8], reason: f[9], submit: f[10] });
+  }
+  return out;
+}
+function parseQueue(lines) { // every pending job on the cluster: id, partitions, priority, reason (no names)
+  if (!lines) return null; const byPart = new Map(); let n = 0;
+  for (const l of lines) {
+    const f = l.split('|'); if (f.length < 4 || !/^\d/.test(f[0].trim())) continue;
+    const r = f.slice(3).join('|'); if (!/^\(?(Priority|Resources)/.test(r.trim())) continue; // only jobs actually competing in line
+    const pr = +f[2]; if (!Number.isFinite(pr)) continue; n++;
+    for (const p of f[1].split(',')) { const k = p.trim(); if (!byPart.has(k)) byPart.set(k, []); byPart.get(k).push(pr); }
+  }
+  for (const a of byPart.values()) a.sort((x, y) => y - x);
+  return n ? byPart : null;
+}
+function placeInLine(partitions, priority) {
+  if (!S.queue || !Number.isFinite(priority) || !priority) return null; let best = null;
+  for (const p of String(partitions || '').split(',')) {
+    const arr = S.queue.get(p.trim()); if (!arr) continue;
+    let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] > priority) lo = m + 1; else hi = m; }
+    const r = { rank: lo + 1, of: Math.max(arr.length, lo + 1), partition: p.trim() };
+    if (!best || r.rank < best.rank) best = r;
+  }
+  return best;
+}
+function parseBilling(s) {
+  const w = {};
+  for (const kv of s.split(',')) {
+    const i = kv.indexOf('='); if (i < 0) continue;
+    const key = kv.slice(0, i).trim().toLowerCase(); const raw = kv.slice(i + 1).trim();
+    let n = parseFloat(raw); const unit = raw.replace(/^[\d.]+/, '').toUpperCase();
+    if (!Number.isFinite(n)) continue;
+    if (key === 'mem') { if (unit === 'T') n = n / 1024; else if (unit !== 'G') n = n * 1024; } // weight per GB
+    if (key.startsWith('gres/gpu')) w.gpu = Math.max(w.gpu || 0, n); else w[key] = n;
+  }
+  return w;
+}
+function parsePartitions(lines) {
+  const parts = []; let cur = null;
+  for (const l of lines || []) {
+    const m = l.match(/PartitionName=(\S+)/); if (m) { cur = { name: m[1], w: null }; parts.push(cur); continue; }
+    const b = l.match(/TRESBillingWeights=(\S+)/); if (b && cur) cur.w = parseBilling(b[1]);
+  }
+  return parts;
+}
+function parseQos(lines) {
+  const q = []; for (const l of lines || []) { const f = l.trim().split('|'); if (f.length >= 2 && f[0] && !/^Name$/i.test(f[0])) q.push({ name: f[0], priority: +f[1] || 0, factor: Number.isFinite(parseFloat(f[2])) ? parseFloat(f[2]) : 1 }); }
+  return q;
+}
+function parseSshare(lines) {
+  lines = lines || []; const hi = lines.findIndex(l => /^\s*Account\|User\|/.test(l)); if (hi < 0) return null;
+  const h = lines[hi].trim().split('|'); const ix = n => h.indexOf(n);
+  const need = ['Account', 'User', 'RawShares', 'NormShares', 'RawUsage', 'EffectvUsage', 'FairShare', 'LevelFS'];
+  if (need.some(n => ix(n) < 0)) return null;
+  const all = []; const stack = []; let root = null;
+  for (const raw of lines.slice(hi + 1)) {
+    if (!raw.includes('|')) continue;
+    const f = raw.split('|'); const acctRaw = f[ix('Account')] || '';
+    const depth = acctRaw.length - acctRaw.replace(/^ +/, '').length;
+    const n = { account: acctRaw.trim(), user: (f[ix('User')] || '').trim(), rawShares: num(f[ix('RawShares')]), parentShares: /^\s*parent\s*$/i.test(f[ix('RawShares')] || ''), normShares: num(f[ix('NormShares')]),
+      rawUsage: num(f[ix('RawUsage')]), effUsage: num(f[ix('EffectvUsage')]), fairShare: num(f[ix('FairShare')]), levelFS: num(f[ix('LevelFS')]),
+      depth, children: [], parent: null };
+    while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
+    n.parent = stack.length ? stack[stack.length - 1] : null;
+    if (n.parent) n.parent.children.push(n); else if (!root) root = n;
+    if (!n.user) stack.push(n);
+    all.push(n);
+  }
+  return { root, all, users: all.filter(n => n.user && n.user !== 'root' && Number.isFinite(n.fairShare)) };
+}
+
+/* ===== model ===== */
+let S = null; // current analysis state
+let showNames = true; // group (account) names are visible to every user via sshare; people stay anonymous
+let activeAcct = 0;
+
+function analyze(text) {
+  const sec = splitSections(text);
+  if (sec.WHOAMI && !sec.END) throw new Error("This report looks cut off: it doesn't reach the end marker. Run the command again and re-download the file.");
+  const tree = parseSshare(sec.SSHARE);
+  if (!tree || !tree.root) throw new Error("Couldn't find the sshare section. Make sure you ran the whole command and loaded queue-report.txt.");
+  const cfg = parseConfig(sec.CONFIG); const sw = parseSprioW(sec.SPRIO_W);
+  const W = k => { const c = num(cfg['PriorityWeight' + k]); if (Number.isFinite(c)) return c; const s = num(sw[k.toUpperCase()]); return Number.isFinite(s) ? s : 0; };
+  const weights = { age: W('Age'), fs: W('FairShare'), qos: W('QOS'), jobsize: W('JobSize'), partition: W('Partition'), assoc: W('Assoc') };
+  const maxAgeDays = parseDuration(cfg.PriorityMaxAge) || 7;
+  const halfLife = parseDuration(cfg.PriorityDecayHalfLife);
+  const flags = cfg.PriorityFlags || '';
+  const qos = parseQos(sec.QOS); const maxQos = Math.max(0, ...qos.map(q => q.priority));
+  const me = (sec.WHOAMI || []).map(s => s.trim()).find(Boolean) || null;
+  const viewer = (sec.VIEWER || []).map(s => s.trim()).find(Boolean) || null;
+  return { sec, tree, cfg, weights, maxAgeDays, halfLife, flags, maxTres: /MAX_TRES/.test(flags), fairTree: !/NO_FAIR_TREE/.test(flags),
+    privateData: cfg.PrivateData || '', qos, maxQos, me, helper: !!(viewer && me && viewer !== me), parts: parsePartitions(sec.PARTITIONS),
+    sprio: parseSprio(sec.SPRIO), pending: parsePending(sec.PENDING), queue: parseQueue(sec.QUEUE) };
+}
+
+function sortSibs(arr) {
+  return [...arr].sort((a, b) => {
+    const x = Number.isNaN(a.levelFS) ? -1 : a.levelFS, y = Number.isNaN(b.levelFS) ? -1 : b.levelFS;
+    if (x === y) return 0; return y > x ? 1 : -1;
+  });
+}
+function statusOf(n) {
+  if (n.parentShares && n.parent) return { ...statusOf(n.parent), inherited: true }; // RawShares=parent: competes as its account, not on its own
+  if (!(n.normShares > 0)) return { key: 'noshare', ratio: Infinity };
+  const ratio = n.levelFS === Infinity || !(n.effUsage > 0) ? 0 : 1 / n.levelFS;
+  if (!(n.effUsage > 0)) return { key: 'open', ratio: 0 };
+  if (n.levelFS === 0) return { key: 'noshare', ratio: Infinity };
+  if (ratio < 0.5) return { key: 'green', ratio };
+  if (ratio <= 1.1) return { key: 'blue', ratio };
+  if (ratio <= 2) return { key: 'yellow', ratio };
+  return { key: 'red', ratio };
+}
+const ledClass = k => 'led-' + (k === 'noshare' ? 'red' : k);
+const sharePct = r => { const v = r * 100; return r === 0 ? '0%' : v < 0.05 ? '<0.1%' : v < 9.95 ? `${v.toFixed(1)}%` : v > 9999 ? '>9,999%' : `${fmt(Math.round(v))}%`; }; // one decimal under 10%, so tiny-but-real usage never reads as 0%
+function readout(st) { if (st.key === 'open') return '0%'; if (st.ratio === Infinity) return 'no share'; return sharePct(st.ratio); }
+// Separately run top-level pools whose queues aren't public: the data for them can't be trusted, so they're left out of every view.
+const HIDDEN_POOLS = /^(ailab|pli)([-_]|$)/i;
+const shown = n => !(n.parent && !n.parent.parent && !n.user && HIDDEN_POOLS.test(n.account));
+function chain(n) { const c = []; for (let x = n; x && x.parent; x = x.parent) c.unshift(x); return c; } // excludes root
+function percentAhead(u) { const us = S.tree.users; const below = us.filter(x => x.fairShare < u.fairShare).length; return us.length > 1 ? below / (us.length - 1) : 1; }
+function spotRank(u) { return 1 + S.tree.users.filter(x => x.fairShare > u.fairShare).length; }
+const ageRate = () => S.weights.age > 0 ? S.weights.age / S.maxAgeDays : 0; // points per day
+
+/* ===== rendering ===== */
+function renderSign() { // one mile per job ahead of your best-placed job
+  const mi = $('#signMi'), best = Math.min(...(S.jobNotes || []).filter(n => n.place).map(n => n.place.rank));
+  if (!Number.isFinite(best)) { mi.textContent = '— mi'; mi.title = 'None of your jobs are in line right now'; return; }
+  mi.textContent = best === 1 ? 'NEXT' : `${fmt(best - 1)} mi`;
+  mi.title = best === 1 ? 'Your job is next in line' : `${fmt(best - 1)} ${best === 2 ? 'job' : 'jobs'} ahead of your best-placed job`;
+}
+function render() {
+  const mine = S.tree.users.filter(u => u.user === S.me);
+  S.mine = mine.sort((a, b) => b.fairShare - a.fairShare);
+  S.worst = null; // the group furthest over its share sets the top of the sputter scale
+  for (const n of S.tree.all) if (!n.user && n.parent && n.parent.parent && n.normShares > 0 && n.effUsage > 0 && n.levelFS > 0 && Number.isFinite(n.levelFS)) {
+    const r = 1 / n.levelFS; if (!S.worst || r > S.worst.ratio) S.worst = { node: n, ratio: r };
+  }
+  $('#results').hidden = false;
+  $('#viewingAs').replaceChildren('Showing results for ', el('b', { text: S.me }), '.');
+  if ($('#ticketText')) { $('#ticketText').hidden = true; $('#ticketMsg').textContent = ''; }
+  $('#prefillNote').hidden = true; $('#tollBox').open = false; qosFilter = 'all';
+  renderSummary(); renderJobs(); renderTabs(); renderLine(); renderSheet(); renderLevers(); setupPrice(); renderSign();
+  $('#sumHead').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+}
+
+function renderSummary() {
+  const box = $('#summary'); box.replaceChildren();
+  for (const u of S.mine) {
+    const pct = percentAhead(u); const k = pct >= 0.66 ? 'green' : pct >= 0.33 ? 'yellow' : 'red';
+    box.append(el('div', { class: 'console' },
+      el('div', { class: 'cap', text: `Account: ${u.account}` }),
+      el('div', { class: 'sub', text: 'Merge score (0–1, higher is better)' }),
+      el('div', { class: `readout ${ledClass(k)}`, text: u.fairShare.toFixed(3) }),
+      el('div', { class: 'sub' }, `Merges ahead of ${Math.round(pct * 100)}% of everyone on the road. Spot ${fmt(spotRank(u))} of ${fmt(S.tree.users.length)}, where spot 1 merges first.`),
+      S.weights.fs ? el('div', { class: 'sub' }, `Worth ${fmt(u.fairShare * S.weights.fs)} of a possible ${fmt(S.weights.fs)} priority points.`) : null));
+  }
+  if (S.mine.length) box.append(el('p', { class: 'small muted' }, 'Green: ahead of most · Yellow: middle of the pack · Red: behind most.'));
+  if (!S.fairTree) box.append(el('p', { class: 'tip warn' }, "This cluster doesn't use the Fair Tree method, so the level-by-level explanation below may not match how it ranks users."));
+  if (S.privateData && !/none/i.test(S.privateData)) box.append(el('p', { class: 'tip warn' }, 'This cluster hides some usage data, so other groups may be missing from the views below.'));
+}
+
+/* ----- job verdicts ----- */
+function kindOf(reason) {
+  const r = (reason || '').replace(/[()]/g, '').trim();
+  if (!r) return 'unknown';
+  if (/^None$/i.test(r)) return 'new';
+  if (/^Resources/i.test(r)) return 'resources';
+  if (/^Priority/i.test(r)) return 'priority';
+  if (/Dependency/i.test(r)) return 'dependency';
+  if (/Held|JobHeld/i.test(r)) return 'held';
+  if (/BeginTime/i.test(r)) return 'begin';
+  if (/ReqNodeNotAvail|Reservation|PartitionDown|PartitionInactive|NodeDown|Nodes required|DRAIN|maint/i.test(r)) return 'unavailable';
+  if (/PerJob|PartitionTimeLimit|PartitionNodeLimit|PartitionConfig|^Invalid|Min\w*NotSatisfied/i.test(r)) return 'oversize';
+  if (/Grp(?!\w*Run)\w*Minutes/i.test(r)) return 'budget'; // RunMinutes caps clear as running jobs finish, so they stay 'limit'
+  if (/QOS|Assoc|Limit|Max|Grp/i.test(r)) return 'limit';
+  return 'other';
+}
+function gpusOf(gres) { const m = String(gres || '').match(/gpu(?::[A-Za-z0-9_.-]+)?[:=](\d+)/i); return m ? +m[1] : 0; }
+
+let qosFilter = 'all';
+function buildQueues(items) {
+  const parts = new Map();
+  for (const it of items) { if (!parts.has(it.part)) parts.set(it.part, { name: it.part, items: [] }); parts.get(it.part).items.push(it); }
+  const qs = [...parts.values()].sort((a, b) => b.items.length - a.items.length || a.name.localeCompare(b.name));
+  for (const q of qs) {
+    q.items.sort((a, b) => {
+      const ra = a.note.place ? a.note.place.rank : Infinity, rb = b.note.place ? b.note.place.rank : Infinity;
+      return ra - rb || KIND_ORDER.indexOf(a.note.kind) - KIND_ORDER.indexOf(b.note.kind) || (b.note.priority || 0) - (a.note.priority || 0);
+    });
+    const ranked = q.items.filter(it => it.note.place); const line = S.queue && S.queue.get(q.name);
+    q.best = ranked[0] ? ranked[0].note.place : null; q.lineLength = line ? line.length : null;
+    const reasons = new Map();
+    for (const it of q.items) { const key = it.note.kind + '|' + it.reason; if (!reasons.has(key)) reasons.set(key, { kind: it.note.kind, reason: it.reason, items: [] }); reasons.get(key).items.push(it); }
+    q.reasons = [...reasons.values()].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.items.length - a.items.length);
+    for (const r of q.reasons) {
+      const counts = new Map(); r.items.forEach(it => counts.set(it.note.verdict, (counts.get(it.note.verdict) || 0) + 1));
+      r.verdict = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      if (r.items.length > 1) r.verdict = PLURAL_VERDICT[r.verdict] || r.verdict;
+    }
+  }
+  return qs;
+}
+const baseId = id => String(id).split('_')[0]; // sprio lists a pending array once, by its base id
+function renderJobs() {
+  const box = $('#jobsBody'); box.replaceChildren(); S.jobNotes = [];
+  const byId = new Map(); for (const p of S.pending) byId.set(p.id, p);
+  const bases = new Set(S.pending.map(p => baseId(p.id)));
+  for (const [id, sp] of Object.entries(S.sprio)) if (!bases.has(id)) byId.set(id, { id, partition: sp.PARTITION, account: sp.ACCOUNT, qos: sp.QOSNAME, reason: '' });
+  if (!byId.size) { box.append(el('p', {}, 'You have no jobs waiting right now. The rest of this page still shows where you stand for the next one.')); S.jobQueues = []; return; }
+  const all = [];
+  for (const j of byId.values()) {
+    const sp = S.sprio[baseId(j.id)]; const card = jobCard(j, sp); const note = S.jobNotes[S.jobNotes.length - 1];
+    const part = (note.place && note.place.partition) || String(j.partition || '?').split(',')[0].trim();
+    all.push({ j, card, note, part, qos: (j.qos || (sp && sp.QOSNAME) || 'unknown').trim(), reason: (j.reason || '').replace(/[()]/g, '').trim() });
+  }
+  S.jobItems = all; S.jobQueues = buildQueues(all);
+  const qosCounts = new Map(); all.forEach(it => qosCounts.set(it.qos, (qosCounts.get(it.qos) || 0) + 1));
+  if (qosFilter !== 'all' && !qosCounts.has(qosFilter)) qosFilter = 'all';
+  if (qosCounts.size > 1) {
+    const bar = el('div', { class: 'tabs qosbar', role: 'group', 'aria-label': 'Filter by trip type' });
+    const pts = name => { const q = S.qos.find(x => x.name === name); return q && S.maxQos && S.weights.qos ? `Adds ${fmt(q.priority / S.maxQos * S.weights.qos)} priority points` : null; };
+    const btn = (val, label, title) => el('button', { type: 'button', 'aria-pressed': String(qosFilter === val), text: label, title, onclick: () => { qosFilter = val; renderJobs(); } });
+    bar.append(el('span', { class: 'small muted', text: 'Trip type (QOS):' }), btn('all', `All (${fmt(all.length)})`));
+    [...qosCounts.entries()].sort((a, b) => b[1] - a[1]).forEach(([name, n]) => bar.append(btn(name, `${name} (${fmt(n)})`, pts(name))));
+    box.append(bar);
+  }
+  const shownQs = qosFilter === 'all' ? S.jobQueues : buildQueues(all.filter(it => it.qos === qosFilter));
+  let anyHollow = false, anyArray = false;
+  for (const q of shownQs) {
+    const card = el('div', { class: 'jgroup' });
+    card.append(el('div', { class: 'jg-head' }, el('h3', { text: `${q.name} lane` }), el('span', { class: 'jg-count', text: `${fmt(q.items.length)} of your jobs` })));
+    const facts = [];
+    if (q.lineLength) facts.push(`${fmt(q.lineLength)} jobs waiting in this lane`);
+    if (q.best) facts.push(`your best spot is #${fmt(q.best.rank)}`);
+    if (facts.length) card.append(el('p', { class: 'meta', text: facts.join(', ') + '.' }));
+    const rl = el('ul', { class: 'reasons' });
+    for (const r of q.reasons) rl.append(el('li', {}, el('span', { class: `swatch k-${r.kind}` }), el('b', { text: `${GROUP_TITLES[r.kind] || GROUP_TITLES.other} (${fmt(r.items.length)})` }),
+      r.reason ? el('span', { class: 'muted small', text: ` Slurm reason: ${r.reason}.` }) : null, el('br'), r.verdict));
+    card.append(rl);
+    const strip = laneStrip(q); if (strip) card.append(strip);
+    const dots = el('div', { class: 'dots', role: 'group', 'aria-label': `${q.items.length} jobs in ${q.name}. Select one for details.` });
+    const detail = el('div', { class: 'jg-detail' });
+    q.items.slice(0, 400).forEach(it => {
+      const n = it.note; if (n.notAccruing) anyHollow = true; const arr = it.j.id.includes('_'); if (arr) anyArray = true;
+      const label = `${arr ? 'Job array' : 'Job'} ${it.j.id} under ${it.j.account || '?'}, trip type ${it.qos}` + (n.place ? `, #${n.place.rank} of ${n.place.of} in line` : '') + `, ${(GROUP_TITLES[n.kind] || 'waiting').toLowerCase()}` + (Number.isFinite(n.days) ? `, waiting ${fmt(n.days, 1)} days` : '') + (n.priority ? `, priority ${fmt(n.priority)}` : '') + (n.notAccruing ? ', not earning waiting-time priority' : '');
+      const d = el('button', { type: 'button', class: `dot k-${n.kind}${n.place ? ' chip' : ''}${n.notAccruing ? ' hollow' : ''}${arr ? ' array' : ''}`, title: label, 'aria-label': label, 'aria-pressed': 'false' }, n.place ? `#${fmt(n.place.rank)}` : null);
+      d.onclick = () => {
+        const on = d.getAttribute('aria-pressed') !== 'true';
+        dots.querySelectorAll('.dot').forEach(x => x.setAttribute('aria-pressed', 'false'));
+        detail.replaceChildren(); if (on) { d.setAttribute('aria-pressed', 'true'); detail.append(it.card); }
+      };
+      dots.append(d);
+    });
+    if (q.items.length > 400) dots.append(el('span', { class: 'small muted', text: `+${fmt(q.items.length - 400)} more` }));
+    card.append(dots, detail); box.append(card);
+  }
+  box.append(el('p', { class: 'small muted' }, (S.queue ? 'One plate per job, best place in line first (#1 is next). Jobs that are not in traffic show as plain dots. ' : 'One dot per job, highest priority first. ') + 'Select one for details.' + (anyArray ? ' Square dots and stacked plates are job arrays, one per array.' : '') + (anyHollow ? ' Dashed plates and hollow dots are jobs with the engine off: not earning waiting-time priority yet.' : '') + (S.queue ? '' : " This report came from an older version of the command. Copy the command in step 1 again and re-run it to see each job's place in line.")));
+}
+function laneStrip(q) {
+  if (!q.lineLength) return null;
+  const ranked = q.items.filter(it => it.note.place); const parked = q.items.filter(it => !it.note.place);
+  const of = Math.max(q.lineLength, ...ranked.map(it => it.note.place.rank), 1);
+  const best = ranked[0] ? ranked[0].note.place.rank : null; const go = best === 1;
+  const W = 1000, H = (parked.length ? 190 : 152) + 12, STOP = 772, STEP = 26, FRONT = STOP - 24;
+  const svg = sv('svg', { class: 'lane', viewBox: `0 0 ${W} ${H}`, role: 'img',
+    'aria-label': `Two-lane on-ramp for the ${q.name} lane: ${fmt(of)} jobs waiting in line, front on the right.` + (best ? ` Your best job is #${fmt(best)}.` : '') + (parked.length ? ` ${plural(parked.length, 'job')} parked on the shoulder, not in line.` : '') });
+  const add = (tag, a, txt, parent) => { const e = sv(tag, a); if (txt != null) e.textContent = txt; (parent || svg).append(e); return e; };
+  const ghost = (x, y, parent, cls) => { const g = sv('g', { class: 'ghostcar ' + (cls || '') }); add('rect', { x, y, width: 22, height: 16, rx: 4, class: 'ghost' }, null, g); add('rect', { x: x + 14, y: y + 2, width: 4, height: 12, rx: 1.5, class: 'ghost-glass' }, null, g); (parent || svg).append(g); return g; };
+  // highway (one lane of running jobs), grass, and a two-lane ramp that tapers in
+  add('path', { d: 'M0 48 H880 L780 64 H0 Z', class: 'grass' });
+  add('rect', { x: 0, y: 6, width: W, height: 42, style: 'fill:var(--asphalt)' });
+  add('path', { d: 'M0 64 H780 L880 48 H960 L842 110 H0 Z', style: 'fill:var(--asphalt)' });
+  add('line', { x1: 0, x2: W, y1: 8, y2: 8, style: 'stroke:#fff', 'stroke-width': 2 });
+  add('line', { x1: 0, x2: 880, y1: 48, y2: 48, style: 'stroke:#fff', 'stroke-width': 2 });
+  add('line', { x1: 960, x2: W, y1: 48, y2: 48, style: 'stroke:#fff', 'stroke-width': 2, 'stroke-dasharray': '14 10' });
+  add('path', { d: 'M780 64 L880 48', style: 'stroke:#fff;fill:none', 'stroke-width': 2 });
+  add('path', { d: 'M0 108 H842 L960 50', style: 'stroke:#fff;fill:none', 'stroke-width': 2 });
+  add('line', { x1: 0, x2: STOP, y1: 86, y2: 86, style: 'stroke:#ffffffaa', 'stroke-width': 2, 'stroke-dasharray': '16 12' }); // lane divider
+  add('text', { x: 12, y: 21, style: 'fill:#ffffffb0', 'font-size': 12 }, 'Highway: jobs running now');
+  // Running jobs: one car every ~54 units, drifting right 380 units per 5 s meter cycle. One slot in each
+  // 380-unit stretch is left empty and timed to pass the taper just as the metered car arrives, so it merges into a clear gap.
+  const traffic = sv('g', { class: 'traffic' }); const D = 380, SP = D / 7, GAP_AT = 720;
+  for (let j = -3; j <= 3; j++) for (let k = 1; k < 7; k++) { const x = GAP_AT + k * SP + j * D; if (x > -D - 30 && x < W + 30) ghost(x, 26, traffic); }
+  svg.append(traffic);
+  // how many background cars to draw, and what each stands for
+  const total = Math.min(of, 56), topN = Math.ceil(total / 2), botN = total - topN, per = of / total;
+  // top lane: metered, inches forward one car each time the light turns green
+  const topLane = sv('g', { class: 'ramp-top' });
+  for (let k = 1; k <= topN; k++) ghost(FRONT - k * STEP, 67, topLane);
+  svg.append(topLane);
+  if (topN) ghost(FRONT, 67, svg, 'merger'); // the car at the light, which merges on green
+  // bottom lane: your cars at their real place in line, with grey traffic around them
+  const mineX = ranked.map(it => FRONT - (it.note.place.rank - 1) / Math.max(1, of - 1) * (FRONT - 20));
+  for (let k = 0; k < botN; k++) { const x = FRONT - k * STEP; if (!mineX.some(m => Math.abs(m - x) < 22)) ghost(x, 89, svg); }
+  // stop line and ramp meter
+  add('line', { x1: STOP, x2: STOP, y1: 65, y2: 108, style: 'stroke:#fff', 'stroke-width': 5 });
+  add('line', { x1: 790, x2: 790, y1: 112, y2: 146, style: 'stroke:#6b7279', 'stroke-width': 4 });
+  add('rect', { x: 780, y: 112, width: 20, height: 34, rx: 4, style: 'fill:#111' });
+  add('circle', { cx: 790, cy: 121, r: 6, class: `meter red${go ? '' : ' cycle'}` });
+  add('circle', { cx: 790, cy: 137, r: 6, class: `meter green${go ? ' lit' : ' cycle'}` }); // flashes green every 5s unless your job is next
+  add('text', { x: 808, y: 126, style: 'fill:var(--muted)', 'font-size': 14 }, 'Ramp meter');
+  add('text', { x: 808, y: 142, style: 'fill:var(--muted)', 'font-size': 14 }, go ? 'Your job is first in line' : 'One car per green');
+  ranked.slice(0, 400).forEach((it, idx) => {
+    const car = add('rect', { x: mineX[idx].toFixed(1), y: 89, width: 22, height: 16, rx: 4, class: `car k-${it.note.kind}${it.note.notAccruing ? ' off' : ''}` });
+    const t = sv('title'); t.textContent = `Job ${it.j.id}: #${it.note.place.rank} of ${of}`; car.append(t);
+  });
+  add('text', { x: 2, y: 128, style: 'fill:var(--muted)', 'font-size': 14 }, `On-ramp: ${fmt(of)} jobs waiting` + (per > 1.05 ? ` (each white car is about ${fmt(per)} jobs)` : '') + '.' + (go ? ' First in line still waits for free hardware.' : ''));
+  add('text', { x: 2, y: 146, style: 'fill:var(--muted)', 'font-size': 14 }, 'Back of the line on the left, front at the meter. Your jobs are in the lower row.');
+  add('text', { x: W - 4, y: H - 3, 'text-anchor': 'end', style: 'fill:var(--muted); opacity:.7', 'font-size': 11, 'font-style': 'italic' }, 'Is every car a Subaru Legacy? Yup!');
+  if (parked.length) {
+    add('text', { x: 2, y: 176, style: 'fill:var(--muted)', 'font-size': 14 }, 'Shoulder (not in line):');
+    parked.slice(0, 20).forEach((it, k) => { const c = add('rect', { x: 160 + k * 28, y: 164, width: 22, height: 16, rx: 4, class: `car k-${it.note.kind} off` }); const t = sv('title'); t.textContent = `Job ${it.j.id}: ${it.reason || 'not in line'}`; c.append(t); });
+    if (parked.length > 20) add('text', { x: 160 + 20 * 28, y: 176, style: 'fill:var(--muted)', 'font-size': 14 }, `+${parked.length - 20}`);
+  }
+  return svg;
+}
+const KIND_ORDER = ['oversize', 'priority', 'resources', 'new', 'budget', 'limit', 'unavailable', 'held', 'dependency', 'begin', 'other', 'unknown'];
+const PLURAL_VERDICT = {
+  'This job is waiting on another job, not on the line.': 'These jobs are waiting on other jobs, not on the line.',
+  "This job is on hold, so it isn't in line at all.": "These jobs are on hold, so they aren't in line at all.",
+  "This job asked to start later, so it isn't in line yet.": "These jobs asked to start later, so they aren't in line yet.",
+  "There isn't enough priority information for this job.": "There isn't enough priority information for these jobs.",
+  "The scheduler hasn't looked at this job yet.": "The scheduler hasn't looked at these jobs yet.",
+  'This job just arrived. It earns more priority for every hour it waits.': 'These jobs just arrived. They earn more priority for every hour they wait.',
+  'Other jobs simply have more priority than this one right now.': 'Other jobs simply have more priority than these right now.',
+  'This job asks for more than this road allows, so it will never start as submitted.': 'These jobs ask for more than this road allows, so they will never start as submitted.',
+};
+const GROUP_TITLES = {
+  priority: 'Stuck behind higher-priority traffic', resources: 'Near the front, waiting for room on the road', limit: 'Stopped at a usage cap', oversize: 'Too big for this road (will never start)', budget: 'Time budget used up (usage-minutes cap)',
+  unavailable: 'Road closed for maintenance or a reservation', held: 'Parked (on hold)', dependency: 'Waiting for another job',
+  begin: 'Scheduled to leave later', new: 'Just pulled onto the ramp', other: 'In traffic, reason not recognized', unknown: 'In traffic',
+};
+
+function jobCard(j, sp) {
+  const k = kindOf(j.reason);
+  const P = n => (sp && Number.isFinite(num(sp[n]))) ? num(sp[n]) : 0;
+  const age = P('AGE'), fs = P('FAIRSHARE'), qos = P('QOS'), nice = P('NICE'), other = P('JOBSIZE') + P('PARTITION_F') + P('ASSOC') + P('SITE');
+  const total = sp ? num(sp.PRIORITY) : NaN;
+  const rate = ageRate(); const days = rate ? age / rate : NaN;
+  const w = S.weights; const fsFrac = w.fs ? fs / w.fs : NaN;
+  const card = el('article', { class: `job k-${k}` });
+  const g = gpusOf(j.gres);
+  card.append(el('p', { class: 'meta' }, `Job ${j.id} on ${j.partition || '?'} under ${j.account || '?'}` + (j.qos ? `, trip type ${j.qos}` : '') + (g ? `, ${plural(g, 'GPU')}` : '') + (j.reason ? `. Slurm says: ${j.reason}` : '')));
+
+  let verdict, detail = [];
+  const cleanReason = (j.reason || '').replace(/[()]/g, '');
+  switch (k) {
+    case 'resources': verdict = "You're near the front, waiting for room on the road."; detail.push("Priority isn't the problem here. The job needs more hardware than is free right now. A smaller request (fewer GPUs, cores, or memory) or a shorter time limit can let it start sooner, because the scheduler can slip short jobs into gaps."); break;
+    case 'dependency': verdict = "This job is waiting on another job, not on the line."; detail.push('It was submitted with a dependency and starts once that condition is met. If the job it depends on failed, this one may never start; check with squeue or cancel and resubmit.'); break;
+    case 'held': verdict = 'This job is on hold, so it isn\'t in line at all.'; detail.push('Held jobs don\'t move. If you held it, release it with scontrol release. If an administrator did, contact your support team.'); break;
+    case 'begin': verdict = "This job asked to start later, so it isn't in line yet."; detail.push('It was submitted with a start time (--begin) that hasn\'t arrived.'); break;
+    case 'oversize': verdict = 'This job asks for more than this road allows, so it will never start as submitted.'; detail.push(`Slurm reason "${cleanReason}" means the request breaks a fixed rule (time, size, or an invalid setting) for its partition, QOS, or account. Waiting won't help: cancel it with scancel and resubmit with a smaller request or a valid setting.`); break;
+    case 'budget': verdict = "Your group's time budget is used up."; detail.push(`Slurm reason "${cleanReason}" means a cap on total usage minutes is spent. It frees up only as past usage decays or the budget resets, or if your support team raises it. Your other jobs finishing won't help.`); break;
+    case 'limit': verdict = "You've hit a usage cap, not a fairshare problem."; detail.push(`Slurm reason "${cleanReason}" means a limit on you, your group, or your trip type is full. The job starts when some of your other jobs finish, no matter how good your spot is.`); break;
+    case 'new': verdict = "The scheduler hasn't looked at this job yet."; detail.push('New jobs get evaluated within a few minutes. Check back shortly for a real reason.'); break;
+    case 'unavailable': verdict = 'The road you asked for is closed right now.'; detail.push('Nodes are down, reserved, or in maintenance. The job will start after they come back.'); break;
+    default: {
+      if (!sp) { verdict = 'There isn\'t enough priority information for this job.'; break; }
+      if (k === 'other' && cleanReason) { verdict = `Slurm says "${cleanReason}", which this page doesn't explain yet.`; detail.push('Search the Slurm docs for this reason, or ask your support team. The priority breakdown below still applies.'); break; }
+      if (Number.isFinite(fsFrac) && fsFrac < 0.35) verdict = "Your group's recent usage is the main thing keeping you back in line.";
+      else if (Number.isFinite(days) && days < 0.5) verdict = 'This job just arrived. It earns more priority for every hour it waits.';
+      else verdict = 'Other jobs simply have more priority than this one right now.';
+    }
+  }
+  card.append(el('p', { class: 'verdict', text: verdict }));
+
+  if (sp && ['priority', 'unknown', 'other', 'resources', 'new'].includes(k)) {
+    const qosMax = S.maxQos ? w.qos : 0; const scale = Math.max(w.age + w.fs + qosMax, age + fs + qos + other, 1);
+    const seg = (cls, v, label) => v > 0 ? el('span', { class: cls, style: `width:${(v / scale * 100).toFixed(2)}%`, title: `${label}: ${fmt(v)} points` }) : null;
+    card.append(el('div', { class: 'bar', role: 'img', 'aria-label': `Priority ${fmt(total)} points: ${fmt(age)} from waiting, ${fmt(fs)} from group driving record, ${fmt(qos)} from trip type, ${fmt(other)} other.` },
+      seg('f-age', age, THEME.factors.age), seg('f-fs', fs, THEME.factors.fs), seg('f-qos', qos, THEME.factors.qos), seg('f-other', other, THEME.factors.other)));
+    const li = (cls, label, v, of) => el('li', {}, el('i', { class: cls }), `${label} ${fmt(v)}` + (of ? ` of ${fmt(of)}` : ''));
+    card.append(el('ul', { class: 'legend' }, li('f-age', THEME.factors.age, age, w.age), li('f-fs', THEME.factors.fs, fs, w.fs), li('f-qos', THEME.factors.qos, qos, qosMax || null), other ? li('f-other', THEME.factors.other, other) : null));
+    const parts = [`Total priority: ${fmt(total)} points.`];
+    if (Number.isFinite(days)) parts.push(`It has waited about ${fmt(days, 1)} days so far; waiting time stops adding points after ${fmt(S.maxAgeDays)} days.`);
+    if (rate) parts.push(w.age && age >= w.age ? 'It has hit that cap, so waiting no longer adds points.'
+      : ['held', 'dependency', 'begin'].includes(k) ? `It isn't earning waiting-time points right now; eligible jobs gain about ${fmt(rate / 24, 1)} an hour.`
+      : `Each hour it waits adds about ${fmt(rate / 24, 1)} points (${fmt(rate)} a day).`);
+    if (nice) parts.push(`A "nice" value of ${fmt(nice)} is lowering it on purpose.`);
+    detail.push(parts.join(' '));
+    if (k !== 'resources' && w.fs && fs < w.fs) // ceilings only: Fair Tree caps a group by its parent's rank, so a "fresh group" gain can't be known from here
+      detail.push(`Fairshare is worth up to ${fmt(w.fs)} points here and this job gets ${fmt(fs)}.` + (w.age ? ` Waiting can add at most ${fmt(w.age)}.` : ''));
+    if (age === 0 && j.submit) {
+      const t = Date.parse(j.submit); if (Number.isFinite(t) && Date.now() - t > 2 * 3600e3)
+        card.append(el('p', { class: 'tip warn' }, "This job was submitted a while ago but has no waiting-time points. It isn't eligible to accrue them yet, usually because of a hold, a dependency, or a cap on how many of your jobs can accrue at once."));
+    }
+  }
+  const place = ['priority', 'resources', 'unknown', 'other', 'new'].includes(k) ? placeInLine(j.partition, Number.isFinite(total) ? total : NaN) : null;
+  if (place) card.insertBefore(el('p', { class: 'place' }, el('b', { text: `#${fmt(place.rank)}` }), ` of ${fmt(place.of)} jobs waiting in the ${place.partition} lane.` + (place.rank === 1 ? ' Nobody is ahead of it, but it still has to wait for enough free hardware.' : '')), card.children[2] || null);
+  for (const d of detail) card.append(el('p', { text: d }));
+  if (j.partition && Number.isFinite(j.cpus) && j.cpus > 0) card.append(el('button', { type: 'button', class: 'tollbtn', text: '🧾 Check this job’s toll', onclick: () => priceJob(j) }));
+  const note = { id: j.id, partition: j.partition, account: j.account, reason: (j.reason || '').replace(/[()]/g, ''), verdict, tip: null,
+    breakdown: sp && ['priority', 'unknown', 'other', 'resources', 'new'].includes(k) ? `priority ${fmt(total)} = ${fmt(age)} age + ${fmt(fs)} fairshare + ${fmt(qos)} QOS` + (other ? ` + ${fmt(other)} other` : '') + (nice ? ` - ${fmt(nice)} nice` : '') : null };
+  note.place = place; note.kind = k; note.priority = Number.isFinite(total) ? total : 0; note.days = days;
+  note.notAccruing = ['held', 'dependency', 'begin'].includes(k) || (!!sp && age === 0 && Number.isFinite(Date.parse(j.submit)) && Date.now() - Date.parse(j.submit) > 2 * 3600e3);
+  S.jobNotes.push(note);
+
+  // account tip
+  const cur = S.mine.find(u => u.account === j.account); const best = S.mine[0];
+  if (cur && best && best !== cur && best.fairShare > cur.fairShare && w.fs) {
+    const gain = (best.fairShare - cur.fairShare) * w.fs; const gd = ageRate() ? gain / ageRate() : NaN;
+    card.append(el('p', { class: 'tip' }, `Submitting under ${best.account} instead would add about ${fmt(gain)} points` + (Number.isFinite(gd) ? ` (about ${fmt(gd, 1)} days of waiting)` : '') + `, if that account is allowed on ${j.partition || 'this partition'}.`));
+    note.tip = `Submitting under ${best.account} instead would add about ${fmt(gain)} priority points` + (Number.isFinite(gd) ? ` (about ${fmt(gd, 1)} days of waiting)` : '') + `, if that account can use ${j.partition || 'this partition'}.`;
+  }
+  return card;
+}
+
+/* ----- level by level ----- */
+function renderTabs() {
+  const t = $('#tabs'); t.replaceChildren();
+  if (activeAcct >= S.mine.length) activeAcct = 0;
+  S.mine.forEach((u, i) => t.append(el('button', { type: 'button', role: 'tab', 'aria-selected': String(i === activeAcct), text: u.account, onclick: () => { activeAcct = i; renderTabs(); renderLine(); } })));
+}
+// Static icon markup (never contains user data). Healthy cars cruise; overused ones sputter and smoke.
+const ICON_ROAD = '<svg class="tm" viewBox="0 0 64 30" aria-hidden="true"><rect class="road" x="0" y="1" width="64" height="28" rx="4"/><line class="belt" x1="2" y1="4.5" x2="62" y2="4.5"/><line class="belt" x1="2" y1="25.5" x2="62" y2="25.5"/>'
+  + '<g class="carg"><rect class="body" x="22" y="8" width="22" height="14" rx="4"/><rect class="glass" x="32" y="10" width="5" height="10" rx="1.5"/>'
+  + '<circle class="hz" cx="23.5" cy="9.5" r="1.6"/><circle class="hz" cx="23.5" cy="20.5" r="1.6"/>'
+  + '<g class="flame"><path class="fo" d="M37.4 19 C36.2 15 38.4 11 40.5 6 C42.6 11 44.8 15 43.6 19 Z"/><path class="fi" d="M38.8 19 C38.3 16.3 39.4 13.5 40.5 11 C41.6 13.5 42.7 16.3 42.2 19 Z"/></g></g>'
+  + '<circle class="smoke s1" cx="19" cy="14" r="3"/><circle class="smoke s2" cx="19" cy="14" r="3"/><circle class="smoke s3" cx="19" cy="14" r="3"/></svg>';
+const ICON_PARK = '<svg class="tm park" viewBox="0 0 64 30" aria-hidden="true"><rect class="lot" x="0" y="1" width="64" height="28" rx="4"/>'
+  + '<line class="curb" x1="22" y1="26" x2="62" y2="26"/>'
+  + '<rect class="psign" x="4" y="7" width="15" height="15" rx="2.5"/><text class="pletter" x="11.5" y="19" text-anchor="middle">P</text>'
+  + '<line class="stall" x1="26" y1="18" x2="26" y2="26"/><line class="stall" x1="58" y1="18" x2="58" y2="26"/>'
+  + '<rect class="body" x="31" y="10" width="22" height="14" rx="4"/><rect class="glass" x="41" y="12" width="5" height="10" rx="1.5"/></svg>';
+// Easter egg: a group with no share of the road at all doesn't get a car. It gets a bicycle.
+const ICON_BIKE = '<svg class="tm bike" viewBox="0 0 64 30" aria-hidden="true"><title>No share of the road, so it’s pedaling a bicycle</title>'
+  + '<rect class="road" x="0" y="1" width="64" height="28" rx="4"/><line class="belt" x1="2" y1="2.6" x2="62" y2="2.6"/><line class="belt" x1="2" y1="27.4" x2="62" y2="27.4"/>'
+  + '<g class="rider"><circle class="wheel" cx="24" cy="20.5" r="4.6"/><circle class="wheel" cx="41" cy="20.5" r="4.6"/>'
+  + '<line class="spoke" x1="24" y1="16" x2="24" y2="25"/><line class="spoke" x1="41" y1="16" x2="41" y2="25"/>'
+  + '<path class="frame" d="M24 20.5 L31 20.5 L38 12.5 L29.5 12.5 Z M31 20.5 L28.5 10.5 M41 20.5 L37.5 9.5 L40 9.5"/>'
+  + '<line class="crank" x1="31" y1="17.6" x2="31" y2="23.4"/>'
+  + '<path class="person" d="M28.5 10 L32 4.8 M32 4.8 L37.4 9.6 M28.5 10 L31 17.6"/><circle class="head" cx="33" cy="2.9" r="2.1"/></g></svg>';
+function millIcon(st, node) {
+  const cses = /^cses$/i.test((node && node.account) || '') && !(node && node.user);
+  const span = document.createElement('span'); span.innerHTML = cses || st.key === 'noshare' ? ICON_BIKE : st.key === 'open' ? ICON_PARK : ICON_ROAD; const s = span.firstChild;
+  s.classList.add('st-' + st.key);
+  // How rough the ride is. Yellow cars sputter now and then; red cars shake, smoke and blink harder
+  // as usage climbs, on a log scale from 200% (mild) to 10,000% or no share at all (falling apart).
+  const set = (k, v) => s.style.setProperty(k, v);
+  if (st.key === 'yellow') {
+    const k = clamp((st.ratio - 1.1) / 0.9, 0, 1);
+    set('--sp', `${(4.6 - 1.8 * k).toFixed(2)}s`); set('--amp', (0.6 + 0.4 * k).toFixed(2));
+  } else if (st.key === 'noshare') {
+    // No share is a policy setting, not overuse: the car is held back, hazards on, but it isn't falling apart.
+    set('--haz', '1.2s'); set('--beltr', '6s'); set('--shade', '20%');
+  } else if (st.key === 'red') {
+    // Scaled (log) against the most-over group in this file, with a sane ceiling so even the worst stays believable.
+    const top = Math.max(S.worst ? S.worst.ratio : 100, 3); const r = Math.min(st.ratio, top);
+    const k = clamp(Math.log(r / 2) / Math.log(top / 2), 0, 1);
+    set('--jit', `${(0.55 - 0.25 * k).toFixed(3)}s`); set('--amp', (0.6 + 0.6 * k).toFixed(2));
+    set('--smk', `${(2.4 - 1.1 * k).toFixed(2)}s`); set('--haz', `${(1 - 0.4 * k).toFixed(2)}s`);
+    const slow = top > 5 ? clamp(Math.log(r / 5) / Math.log(top / 5), 0, 1) : 0; set('--beltr', `${(2.6 + 9.4 * slow).toFixed(2)}s`); // crawls slower past 500%
+    set('--shade', `${Math.round(48 * k)}%`); // paint darkens toward burnt maroon
+    if (r >= 10) { s.classList.add('onfire'); set('--flame', (0.8 + 0.6 * (top > 10 ? clamp(Math.log(r / 10) / Math.log(top / 10), 0, 1) : 1)).toFixed(2)); } // engine fire above 1,000%
+  }
+  return s;
+}
+function nameFor(n, isMe, isOnPath, ownGroup) {
+  if (isMe) return el('b', { text: S.helper ? S.me : 'You' });
+  if (n.user) return ownGroup ? n.user : 'Another member'; // name your own groupmates only
+  if (isOnPath || showNames) return el('b', { text: n.account });
+  return 'Another group';
+}
+function renderLine() {
+  const box = $('#lineBody'); box.replaceChildren();
+  const me = S.mine[activeAcct]; if (!me) { box.append(el('p', {}, 'No accounts found for you.')); return; }
+  const full = chain(me); const path = full.length > 1 ? full.slice(1) : full; // skip the top-level split (campus vs. separately funded pools)
+  path.forEach((node, li) => {
+    const parent = node.parent; const sibs = sortSibs(parent.children.filter(c => c.user !== 'root'));
+    const rank = sibs.indexOf(node) + 1; const st = statusOf(node); const isUser = !!node.user;
+    const top = !parent.parent;
+    const card = el('div', { class: 'level' });
+    card.append(el('h3', {}, isUser ? `Level ${li + 1}: ${S.helper ? S.me : 'you'} vs. the other members ${top ? 'at the top level' : `inside ${parent.account}`}`
+      : top ? `Level ${li + 1}: ${node.account} vs. the other top-level accounts` : `Level ${li + 1}: ${node.account} vs. the other groups inside ${parent.account}`));
+    if (top && !isUser) card.append(el('p', { class: 'small muted' }, 'At the very top, traffic comes from a few big on-ramps. These are usually separate pools of hardware or funding, such as one account covering most of campus and others for groups or consortia that bought their own equipment.'));
+    const who = isUser ? (S.helper ? `${S.me} merges` : 'You merge') : `${node.account} merges`;
+    const poss = isUser ? (S.helper ? 'their' : 'your') : 'its', subj = isUser ? (S.helper ? 'They' : 'You') : 'It';
+    const note = isUser ? THEME.status[st.key].note.replace(/^is /, 'are ').replace(/^has /, 'have ').replace("hasn't", "haven't").replace(/\bits\b/g, poss) : THEME.status[st.key].note;
+    let say = sibs.length === 1 ? `${isUser ? (S.helper ? `${S.me} is the only member` : "You're the only member") : "It's the only group"} here, so this level doesn't change anything. ${subj} ${note}` : `${who} #${rank} of ${sibs.length} here. ${subj} ${note}`;
+    if (st.key !== 'open' && st.key !== 'noshare') say += ` (${sharePct(st.ratio)} of ${poss} share)`;
+    say += '.';
+    if (st.inherited) say += ` ${subj} ${isUser ? 'share' : 'shares'} ${parent.account}’s reading (RawShares=parent), so this reading is ${parent.account}’s.`;
+    if (st.key === 'noshare') say += ' Groups with no share merge behind every neighbor at this level that has one. With no share of the road at all, it’s pedaling a bicycle.';
+    card.append(el('p', { text: say }));
+    const list = el('ul', { class: 'mills' });
+    const idx = rank - 1; const show = new Set();
+    if (sibs.length <= 12) sibs.forEach((_, i) => show.add(i));
+    else { [0, 1, 2, sibs.length - 2, sibs.length - 1].forEach(i => show.add(i)); for (let i = idx - 2; i <= idx + 2; i++) if (i >= 0 && i < sibs.length) show.add(i); }
+    const draw = all => {
+      list.replaceChildren(); let last = -1;
+      sibs.forEach((s, i) => {
+        if (!all && !show.has(i)) return;
+        if (i > last + 1) list.append(el('li', { class: 'gap', text: `${fmt(i - last - 1)} more` }));
+        last = i; const sst = statusOf(s); const mine = s === node;
+        list.append(el('li', { class: `mill${mine ? ' you' : ''}` },
+          el('span', { class: 'rank', text: `#${i + 1}` }), millIcon(sst, s),
+          el('span', { class: 'who' }, nameFor(s, mine && isUser, mine, isUser)),
+          el('span', { class: `lcd ${ledClass(sst.key)}`, title: THEME.status[sst.key].label, text: readout(sst) })));
+      });
+      if (!all && last < sibs.length - 1) list.append(el('li', { class: 'gap', text: `${fmt(sibs.length - 1 - last)} more` }));
+    };
+    draw(false); card.append(list);
+    if (sibs.length > 12) { const b = el('button', { type: 'button', class: 'link showall', text: `Show all ${sibs.length}` }); b.onclick = () => { const all = b.dataset.all !== '1'; b.dataset.all = all ? '1' : '0'; b.textContent = all ? 'Show fewer' : `Show all ${sibs.length}`; draw(all); }; card.append(b); }
+    box.append(card);
+  });
+  if (S.worst && S.worst.ratio > 2) box.append(el('p', { class: 'small muted' }, `The roughest ride on this cluster belongs to ${S.worst.node.account}, at ${fmt(Math.round(S.worst.ratio * 100))}% of its share. Every other car's sputter, smoke and flames are scaled against it.`));
+  box.append(el('p', { class: 'small muted' }, `Put together, ${S.helper ? `${S.me} ends` : 'you end'} up at ${me.fairShare.toFixed(3)} in the merge order. Usage readings are each group's recent driving divided by its share, compared only with its neighbors at that level.`));
+}
+
+/* ----- the whole sheet ----- */
+const TOP_COLORS = ['var(--purple)', 'var(--orange)', 'var(--magenta)', 'var(--blue)', 'var(--lime)', 'var(--yellow)', 'var(--teal)'];
+function topColors() { // the person's own top-level account is slate; separately funded pools get bright colors
+  const tops = S.tree.root.children.filter(c => !c.user && shown(c)); const mineTop = new Set(S.mine.map(u => chain(u)[0]));
+  const m = new Map(); let i = 0; tops.forEach(t => m.set(t, mineTop.has(t) ? 'var(--asphalt)' : TOP_COLORS[i++ % TOP_COLORS.length])); return m;
+}
+function renderSplit(box) {
+  const tops = S.tree.root.children.filter(c => !c.user && shown(c) && (c.normShares > 0 || c.effUsage > 0));
+  if (tops.length < 2) return;
+  const col = topColors(); const mineTop = new Set(S.mine.map(u => chain(u)[0]));
+  const order = [...tops].sort((a, b) => (mineTop.has(b) - mineTop.has(a)) || (b.normShares - a.normShares));
+  const bar = (label, val, desc) => {
+    const row = el('div', { class: 'split-row' }, el('div', { class: 'split-label' }, el('b', { text: label }), el('span', { class: 'small muted', text: desc })));
+    const track = el('div', { class: 'split-bar', role: 'img', 'aria-label': `${label}: ` + order.map(t => `${t.account} ${pct(val(t))}`).join(', ') });
+    order.forEach(t => { const v = val(t); if (!(v > 0)) return;
+      track.append(el('span', { style: `width:${(v * 100).toFixed(2)}%;background:${col.get(t)}`, title: `${t.account}: ${pct(v)}` }, v > 0.2 ? `${t.account} ${pct(v)}` : v > 0.06 ? pct(v) : '')); });
+    row.append(track); return row;
+  };
+  const pct = v => v >= 0.1 ? `${Math.round(v * 100)}%` : v > 0 && v < 0.001 ? '<0.1%' : `${(v * 100).toFixed(1)}%`; // never round real usage down to a misleading 0.0%
+  const wrap = el('div', { class: 'split' },
+    bar('Share of the road', t => t.normShares, 'Set by the admins'),
+    bar('Recent driving', t => t.effUsage, 'Who actually used it lately'));
+  const legend = el('ul', { class: 'legend split-legend' });
+  order.forEach(t => legend.append(el('li', {}, el('i', { style: `background:${col.get(t)}` }), el('b', { text: t.account }), `${mineTop.has(t) ? ' (yours)' : ''}: ${pct(t.normShares)} of shares, ${pct(t.effUsage)} of recent driving`)));
+  const yours = order.find(t => mineTop.has(t));
+  box.append(wrap, legend, el('p', { class: 'small muted' },
+    (yours ? `Everyone in ${yours.account} competes for its ${pct(yours.normShares)} of the road. ` : '') +
+    'Recent driving counts every lane, including hardware these groups paid for and run on their own, so a big usage slice does not all come out of the shared lanes.'));
+}
+function renderSheet() {
+  const box = $('#sheetBody'); box.replaceChildren();
+  renderSplit(box);
+  const us = S.tree.users.filter(u => shown(chain(u)[0])).sort((a, b) => b.fairShare - a.fairShare); const N = us.length; if (!N) return;
+  const key = u => { const c = chain(u); return c.length > 2 ? c[1] : c[0]; }; // group block (second level when it exists)
+  const runs = (fn) => { const out = []; us.forEach((u, idx) => { const k = fn(u); const r = out[out.length - 1]; if (r && r.node === k) r.n++; else out.push({ node: k, n: 1, start: idx }); }); return out; };
+  const blocks = runs(key), topsRuns = runs(u => chain(u)[0]); const col = topColors();
+  const Wd = 1000, TOP = 26, H = 70; const svg = sv('svg', { viewBox: `0 0 ${Wd} ${TOP + H + 26}`, role: 'img', 'aria-label': `${N} drivers in ${blocks.length} groups, sorted by merge order, with the top-level pools marked above.` });
+  topsRuns.forEach(r => { // band showing which top-level pool each stretch belongs to
+    const x = r.start / N * Wd, w = Math.max(0.6, r.n / N * Wd);
+    const rect = sv('rect', { x: x.toFixed(2), y: 2, width: w.toFixed(2), height: 18, rx: 3, style: `fill:${col.get(r.node) || 'var(--grey)'}` });
+    const t = sv('title'); t.textContent = `${r.node.account}: ${plural(r.n, 'driver')}`; rect.append(t); svg.append(rect);
+    if (w > 60) { const tx = sv('text', { x: (x + 6).toFixed(1), y: 15.5, style: 'fill:#fff', 'font-size': 12, 'font-weight': 700 }); tx.textContent = r.node.account; svg.append(tx); }
+  });
+  const myBlocks = new Set(S.mine.map(key));
+  blocks.forEach((b, i) => {
+    const st = statusOf(b.node); const c = { open: 'var(--cyan)', green: 'var(--green)', blue: 'var(--blue)', yellow: 'var(--yellow)', red: 'var(--red)', noshare: 'var(--red)' }[st.key];
+    const r = sv('rect', { x: (b.start / N * Wd).toFixed(2), y: TOP + 4, width: Math.max(0.6, b.n / N * Wd).toFixed(2), height: H - 16, style: `fill:${c}`, opacity: myBlocks.has(b.node) ? 1 : (i % 2 ? 0.55 : 0.75) });
+    const t = sv('title'); t.textContent = `${b.node.account}: ${plural(b.n, 'driver')}, ${THEME.status[st.key].label.toLowerCase()}`; r.append(t); svg.append(r);
+  });
+  const marks = el('ul', { class: 'marks' });
+  S.mine.filter(u => us.includes(u)).forEach(u => {
+    const pos = us.indexOf(u); const x = ((pos + 0.5) / N * Wd).toFixed(1);
+    svg.append(sv('line', { x1: x, x2: x, y1: TOP, y2: TOP + H - 4, style: 'stroke:var(--ink)', 'stroke-width': 3 }));
+    svg.append(sv('path', { d: `M${x} ${TOP + H - 4} l-7 12 h14 z`, style: 'fill:var(--ink)' }));
+    marks.append(el('li', {}, el('b', { text: u.account }), `: spot ${fmt(pos + 1)} of ${fmt(N)}`));
+  });
+  const lab = (x, anchor, txt) => { const t = sv('text', { x, y: TOP + H + 22, 'text-anchor': anchor, style: 'fill:var(--muted)', 'font-size': 14 }); t.textContent = txt; svg.append(t); };
+  lab(4, 'start', 'Merges first'); lab(Wd - 4, 'end', 'Merges last');
+  box.append(el('h3', { class: 'sheet-sub', text: 'Everyone, in merge order' }), svg, marks, el('p', { class: 'small muted' }, 'The thin band on top shows which pool each stretch belongs to. Block colors match the usage readings: cyan car park, green light traffic, blue cruising, yellow heavy, red gridlock.'));
+}
+
+/* ----- levers ----- */
+function renderLevers() {
+  const ul = $('#leversBody'); ul.replaceChildren(); const w = S.weights; const rate = ageRate();
+  // Ranked by how much a tip can change your wait, and how soon you can act on it:
+  // 1e9 someone 10× over · 1000+points act today (account, QOS) · 500–700 helps over days · 100–300 context, not actions.
+  const tips = []; const tip = (score, ...args) => tips.push({ score, args });
+  const show = (emoji, title, ...body) => ul.append(el('li', {}, el('span', { class: 'emoji', 'aria-hidden': 'true', text: emoji }),
+    el('div', {}, el('b', { text: title }), ' ', ...body)));
+  const days = pts => rate ? ` (about ${fmt(pts / rate, 1)} days of waiting)` : '';
+  // The heaviest driver in each of your groups. Anyone 10× over their share outweighs every other lever, so that tip goes first.
+  const heavy = [];
+  for (const u of S.mine) {
+    const mates = u.parent.children.filter(c => c.user && c.effUsage > 0 && c.normShares > 0);
+    const top = mates.sort((a, b) => b.effUsage / b.normShares - a.effUsage / a.normShares)[0];
+    if (top && mates.length > 1) heavy.push({ who: top === u ? (S.helper ? S.me : 'you') : top.user, me: top === u, acct: u.account, r: top.effUsage / top.normShares });
+  }
+  const extreme = heavy.filter(h => h.r >= 10);
+  const list = hs => hs.map(h => `${h.who} in ${h.acct} (${sharePct(h.r)} of their share)`).join(', ');
+  const talk = () => extreme.length
+    ? tip(1e9, '🚨', extreme.some(h => h.me) ? 'You’re the heavy driver.' : 'Talk with your group first.',
+        extreme.length === 1 && extreme[0].me
+          ? `${S.helper ? `${S.me} is` : 'You’re'} driving ${sharePct(extreme[0].r)} of ${S.helper ? 'their' : 'your'} share in ${extreme[0].acct} lately, more than 10× over. That alone pushes everyone in the group back, more than any other change here.`
+          : `Driving more than 10× their share lately: ${list(extreme)}. That alone pushes everyone in the group back, more than any other change here.`)
+    : tip(550, '💬', 'Talk with your group.', 'One heavy driver backs up everyone' + (heavy.length ? `. Heaviest lately: ${list(heavy)}.` : '.'));
+  talk();
+  if (S.mine.length > 1 && w.fs) {
+    const best = S.mine[0], worst = S.mine[S.mine.length - 1]; const gap = (best.fairShare - worst.fairShare) * w.fs;
+    tip(1000 + gap, '🛣️', 'Take your fastest on-ramp.', `Use --account=${best.account} when your work allows. It merges ${fmt(gap)} points ahead of ${worst.account}${days(gap)}.`,
+      el('span', { class: 'small muted' }, ' Your accounts: ' + S.mine.map(u => `${u.account} ${u.fairShare.toFixed(3)}`).join(', ') + '.'));
+  }
+  if (S.qos.length && w.qos && S.maxQos) {
+    const used = new Set([...S.pending.map(p => p.qos), ...Object.values(S.sprio).map(x => x.QOSNAME)].filter(Boolean));
+    const mineQ = S.qos.filter(q => used.has(q.name)).sort((a, b) => b.priority - a.priority)[0];
+    const qGap = mineQ ? w.qos - mineQ.priority / S.maxQos * w.qos : null; // points a faster QOS could still add
+    tip(qGap == null ? 800 : qGap > 0 ? 1000 + qGap : 450, '⏱️', 'Ask for a realistic time limit.', 'Shorter limits can land in a faster trip type (QOS)' + (mineQ ? `. Yours is worth ${fmt(mineQ.priority / S.maxQos * w.qos)} points; the best is worth ${fmt(w.qos)}.` : '.'));
+  }
+  if (S.parts.some(p => p.w && p.w.gpu)) {
+    const g = S.parts.filter(p => p.w && p.w.gpu).sort((a, b) => a.w.gpu - b.w.gpu);
+    tip(600, '🚗', 'Pick the right-sized vehicle.', `A GPU-hour adds ${fmt(g[0].w.gpu, 2)} to ${fmt(g[g.length - 1].w.gpu, 2)} toll-hours depending on the lane, where one CPU core for an hour is usually 1. Use the smallest that fits. `,
+      el('button', { type: 'button', class: 'link', text: 'Check a toll', onclick: openToll }), '.');
+  }
+  if (rate) tip(100, '🕰️', 'Waiting pays, slowly.', `Every waiting job gains about ${fmt(rate / 24, 1)} points an hour, up to ${fmt(w.age)} after ${fmt(S.maxAgeDays)} days. Holds and dependencies pause the clock.`);
+  if (Number.isFinite(S.halfLife) && S.halfLife > 0)
+    tip(200, '⏳', 'Let old miles fade.', `Usage counts half after ${fmt(S.halfLife, 1)} days. Ease off and your group climbs back on its own.`);
+  const me = S.mine[activeAcct]; const noShare = me && chain(me).find(n => !n.user && !n.parentShares && !(n.normShares > 0));
+  tip(noShare ? 650 : 300, '🚧', 'Mostly out of your hands.', (noShare ? `${noShare.account} has no share, so it merges behind every group with one at its level. ` : 'Shares are set by the cluster admins and rarely change. ') + 'On some clusters, groups can gain shares by contributing to the hardware; your PI can ask research computing whether that’s an option.');
+  tips.sort((a, b) => b.score - a.score).forEach(t => show(...t.args));
+}
+
+/* ----- toll calculator ----- */
+function limitHours(s) { // Slurm time limit (D-HH:MM:SS, HH:MM:SS, MM:SS or minutes) -> hours
+  s = String(s || '').trim(); if (!s || /UNLIMITED|INVALID/i.test(s)) return NaN;
+  const d = s.match(/^(\d+)-(.*)$/); let days = 0; if (d) { days = +d[1]; s = d[2]; }
+  const p = s.split(':').map(Number); let h = 0;
+  if (p.length === 3) h = p[0] + p[1] / 60 + p[2] / 3600; else if (p.length === 2) h = d ? p[0] + p[1] / 60 : p[0] / 60 + p[1] / 3600; else h = d ? p[0] : p[0] / 60;
+  return days * 24 + h;
+}
+function memGB(s) { const m = String(s || '').match(/^([\d.]+)\s*([KMGT]?)/i); if (!m) return NaN; const n = +m[1]; return ({ K: n / 1048576, M: n / 1024, G: n, T: n * 1024, '': n / 1024 })[m[2].toUpperCase()]; }
+function priceJob(j) {
+  const parts = S.parts.map(p => p.name); const part = String(j.partition).split(',').map(x => x.trim()).find(p => parts.includes(p));
+  if (part) $('#pPart').value = part;
+  const nodes = Math.max(1, j.nodes || 1);
+  $('#pGpu').value = gpusOf(j.gres) * nodes; $('#pCpu').value = j.cpus;
+  const mem = memGB(j.mem); if (Number.isFinite(mem) && mem > 0) $('#pMem').value = Math.round(mem * nodes * 10) / 10;
+  const hrs = limitHours(j.limit); if (Number.isFinite(hrs) && hrs > 0) $('#pHrs').value = Math.round(hrs * 100) / 100;
+  if (S.qos.some(q => q.name === j.qos)) $('#pQos').value = j.qos;
+  const ai = S.mine.findIndex(u => u.account === j.account); if (ai >= 0) $('#pAcct').value = ai;
+  const note = $('#prefillNote'); note.hidden = false; note.textContent = `Filled in from job ${j.id}. Change anything to see a different trip.`;
+  openToll();
+}
+function openToll() {
+  const d = $('#tollBox'); d.open = true; renderPrice();
+  d.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+}
+function billingFor(p, r) {
+  if (!p.w) return r.cpus; const w = p.w;
+  // listed weights replace the 1-per-CPU default, so an unlisted CPU is free
+  const c = r.cpus * (w.cpu ?? 0), m = r.mem * (w.mem || 0), g = r.gpus * (w.gpu || 0);
+  return S.maxTres ? Math.max(c, m, g) : c + m + g;
+}
+function setupPrice() {
+  const ps = $('#pPart'); ps.replaceChildren();
+  const parts = S.parts.length ? S.parts : [{ name: 'default', w: null }];
+  parts.forEach(p => ps.append(el('option', { value: p.name, text: p.name })));
+  const qs = $('#pQos'); qs.replaceChildren(); S.qos.forEach(q => qs.append(el('option', { value: q.name, text: q.name })));
+  $('#pQosWrap').style.display = S.qos.some(q => q.factor !== 1) ? '' : 'none'; // only worth asking when some QOS bills differently
+  if (S.qos.some(q => q.name === 'normal')) qs.value = 'normal';
+  const gp = parts.find(p => p.w && p.w.gpu); if (gp) ps.value = gp.name;
+  const pa = $('#pAcct'); pa.replaceChildren(); S.mine.forEach((u, i) => pa.append(el('option', { value: i, text: u.account })));
+  ['#pPart', '#pQos', '#pGpu', '#pCpu', '#pMem', '#pHrs', '#pAcct'].forEach(s => $(s).oninput = renderPrice);
+  renderPrice();
+}
+function renderPrice() {
+  const out = $('#priceOut'); out.replaceChildren();
+  const parts = S.parts.length ? S.parts : [{ name: 'default', w: null }];
+  const r = { gpus: Math.max(0, +$('#pGpu').value || 0), cpus: Math.max(1, +$('#pCpu').value || 1), mem: Math.max(0, +$('#pMem').value || 0) };
+  const hrs = Math.max(0, +$('#pHrs').value || 0); const p = parts.find(x => x.name === $('#pPart').value) || parts[0];
+  const qo = S.qos.find(q => q.name === $('#pQos').value); const qf = qo ? qo.factor : 1;
+  const b = billingFor(p, r) * qf; const total = b * hrs;
+  const why = (!p.w ? 'No tolls are listed for this lane, so each CPU core counts as 1.'
+    : S.maxTres ? 'This cluster tolls whichever resource is most expensive in your request, not the sum.' : 'This cluster adds up the toll for every resource in your request.')
+    + (qf !== 1 ? ` Trip type ${qo.name} multiplies the toll by ${fmt(qf, 2)}×.` : '');
+  out.append(el('div', { class: 'console' },
+    el('div', { class: 'cap', text: `Toll in the ${p.name} lane` }),
+    el('div', { class: 'readout led-yellow', text: `${fmt(b, 1)} / hr` }),
+    el('div', { class: 'sub', text: `${fmt(total, 1)} toll-hours for the whole trip. Toll-hours are what gets added to your group’s recent driving; one CPU core for one hour is usually 1. ${why}` })));
+  const u = S.mine[+$('#pAcct').value];
+  if (u && u.parent && total > 0) {
+    // Before → after usage reading at the two levels that matter: the group among its neighbors, and you within the group.
+    // Approximate: everyone else's usage is held still. RawUsage is in billing-seconds, so a toll-hour is 3600.
+    const add = total * 3600, g = u.parent;
+    const move = (node, parentRaw) => {
+      if (!(node.normShares > 0) || !(parentRaw >= 0) || !Number.isFinite(node.rawUsage)) return null;
+      const before = parentRaw > 0 ? node.rawUsage / parentRaw / node.normShares : 0, after = (node.rawUsage + add) / (parentRaw + add) / node.normShares;
+      const band = x => THEME.status[x === 0 ? 'open' : x < 0.5 ? 'green' : x <= 1.1 ? 'blue' : x <= 2 ? 'yellow' : 'red'].label;
+      const p = sharePct;
+      return `${p(before)} → ${p(after)} of its share (${band(before)} → ${band(after)})`;
+    };
+    const gm = !(g.normShares > 0) ? 'no share, so it stays No share' : g.parent ? move(g, g.parent.rawUsage) : null, um = move(u, g.rawUsage);
+    const lines = [gm && `${g.account}: ${gm.startsWith('no share') ? gm : `about ${gm}`}`, um && `${S.helper ? S.me : 'You'} within ${g.account}: about ${um.replace('its share', S.helper ? 'their share' : 'your share')}`].filter(Boolean);
+    if (lines.length) out.append(el('p', {}, el('b', { text: 'After this trip' }), ...lines.flatMap(t => [el('br'), t])));
+  }
+  if (r.gpus > 0 && p.w && !p.w.gpu) out.append(el('p', { class: 'tip warn' }, "This lane lists no GPU toll. It may not have GPUs, or it may be a dedicated partition with its own rules."));
+  const cmp = parts.map(x => ({ x, b: billingFor(x, r) * qf })).filter(o => r.gpus === 0 || (o.x.w && o.x.w.gpu)).sort((a, c) => a.b - c.b).slice(0, 8);
+  if (cmp.length > 1) {
+    const tb = el('tbody'); cmp.forEach(o => tb.append(el('tr', {}, el('td', {}, o.x === p ? el('b', { text: o.x.name }) : o.x.name), el('td', { class: 'num', text: fmt(o.b, 1) }), el('td', { class: 'num', text: fmt(o.b * hrs, 1) }))));
+    out.append(el('h3', { style: 'margin-top:1.2rem', text: 'Same trip, other lanes' }),
+      el('p', { class: 'small muted' }, 'Cheapest first. Only lanes your account is allowed to use matter, and cheaper ones may have fewer or smaller GPUs.'),
+      el('div', { class: 'tablewrap' }, el('table', {}, el('thead', {}, el('tr', {}, el('th', { text: 'Lane (partition)' }), el('th', { class: 'num', text: 'Per hour' }), el('th', { class: 'num', text: 'Whole trip' }))), tb)));
+  }
+}
+
+/* ===== plain-text summary for tickets (Slurm terms, no traffic talk) ===== */
+function ticketSummary() {
+  // For research computing staff: why each fairshare is where it is, and how far over share each level on the path runs. No jobs.
+  const L = [`Fairshare summary for ${S.me} (generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')})`];
+  const usage = n => { const st = statusOf(n); return st.key === 'noshare' ? 'no share (0 shares)' : st.key === 'open' ? 'no recent usage' : `${sharePct(st.ratio)} of share` + (st.ratio > 1.1 ? ` (${fmt(st.ratio, 1)}× over)` : ''); };
+  for (const u of S.mine) {
+    L.push('', `${u.account}: fairshare ${u.fairShare.toFixed(3)}, ahead of ${Math.round(percentAhead(u) * 100)}% of users`);
+    let drag = null;
+    for (const n of chain(u)) {
+      const sibs = sortSibs(n.parent.children.filter(c => shown(c) || c === n)), rank = sibs.indexOf(n) + 1;
+      L.push(`  - ${n.user ? `${n.user} (user)` : n.account}: rank ${rank} of ${sibs.length}, ${usage(n)}`);
+      if (!drag && rank > 1) drag = { n, rank, of: sibs.length }; // Fair Tree settles the top level first, so the first level not in first place matters most
+    }
+    L.push(drag ? `  Biggest factor: ${drag.n.user ? 'the user' : drag.n.account} ranks ${drag.rank} of ${drag.of} at its level, ${usage(drag.n)}.` : '  Ranked first at every level.');
+  }
+  if (Number.isFinite(S.halfLife) && S.halfLife > 0) L.push('', `Usage decays with a ${fmt(S.halfLife, 1)}-day half-life.`);
+  return L.join('\n');
+}
+
+/* ===== demo data (entirely made up) ===== */
+function demoQueue(jobs, rnd) {
+  const q = []; let id = 42000000;
+  for (const [part, n] of [['gpu', 260], ['cpu', 540], ['gpu-slice', 40], ['consortium', 120]])
+    for (let i = 0; i < n; i++) q.push(`${id++}|${part}|${Math.round(1200 + Math.pow(rnd(), 1.6) * 5600)}|${rnd() < 0.85 ? '(Priority)' : '(Dependency)'}`);
+  for (const j of jobs) {
+    const a = Math.round(j.ageDays * 10000 / 30), f = Math.round(j.fs * 12000), qq = Math.round(j.qp / 20000 * 8000);
+    const m = j.id.match(/^(\d+)_\[(\d+)-(\d+)\]$/); // squeue -r lists each array task on its own line
+    const ids = m ? Array.from({ length: m[3] - m[2] + 1 }, (_, k) => `${m[1]}_${+m[2] + k}`) : [j.id];
+    for (const id of ids) q.push(`${id}|${j.part}|${a + f + qq + 16}|${j.reason}`);
+  }
+  return q;
+}
+function demoText() {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const mk = (account, shares, kids) => ({ account, rawShares: shares, children: kids || [] });
+  const usr = (user, use) => ({ user, rawUsage: Math.round(use), rawShares: 1, children: [] });
+  const lab = (name, n, heavy, extra) => { const k = []; for (let i = 0; i < n; i++) k.push(usr(`${name.slice(0, 2)}${1000 + i}`, rnd() < 0.45 ? 0 : rnd() * heavy)); return mk(name, 1, k.concat(extra || [])); };
+  const tree = mk('root', 1, [
+    mk('consortium', 300, [lab('bigmodels', 14, 9e8), lab('agents', 8, 6e8)]),
+    mk('campus', 9000, [
+      mk('physics', 900, [lab('quarks', 9, 3e7), lab('plasma', 12, 6e7), lab('cosmo', 7, 1e7)]),
+      mk('chemistry', 700, [lab('catalysis', 10, 9e7), lab('spectra', 6, 2e7)]),
+      mk('biology', 400, [lab('genomes', 11, 5e8, [usr('demo', 1.4e7)]), lab('neurons', 8, 3e6)]),
+      mk('economics', 100, [lab('markets', 5, 4e6)]),
+      mk('humanities', 50, [lab('archives', 4, 1e5)]),
+      mk('support-staff', 0, [usr('demo', 2e5), usr('st1001', 0), usr('st1002', 5e5)]),
+    ]),
+  ]);
+  (function sum(n) { if (n.user) return n.rawUsage; n.rawUsage = n.children.reduce((a, c) => a + sum(c), 0); return n.rawUsage; })(tree);
+  (function norm(n) { const t = n.children.reduce((a, c) => a + c.rawShares, 0); for (const c of n.children) { c.normShares = t ? c.rawShares / t : 0; c.effUsage = n.rawUsage ? c.rawUsage / n.rawUsage : 0; c.levelFS = c.effUsage === 0 ? Infinity : c.normShares / c.effUsage; norm(c); } })(tree);
+  const order = []; (function walk(n) { for (const k of sortSibs(n.children)) { if (k.user) order.push(k); else walk(k); } })(tree);
+  order.forEach((u, i) => u.fairShare = (order.length - i) / order.length);
+  const lines = ['Account|User|RawShares|NormShares|RawUsage|NormUsage|EffectvUsage|FairShare|LevelFS|GrpTRESMins|TRESRunMins'];
+  const lf = v => v === Infinity ? 'inf' : v.toFixed(6);
+  (function out(n, d, acct) {
+    if (n.user) { lines.push(`${' '.repeat(d)}${acct}|${n.user}|1|${n.normShares.toFixed(6)}|${n.rawUsage}|${(n.rawUsage / tree.rawUsage).toFixed(6)}|${n.effUsage.toFixed(6)}|${n.fairShare.toFixed(6)}|${lf(n.levelFS)}||cpu=0`); return; }
+    lines.push(d === 0 ? `root|||0.000000|${tree.rawUsage}||1.000000||||cpu=0` : `${' '.repeat(d)}${n.account}||${n.rawShares}|${n.normShares.toFixed(6)}|${n.rawUsage}|${(n.rawUsage / tree.rawUsage).toFixed(6)}|${n.effUsage.toFixed(6)}||${lf(n.levelFS)}||cpu=0`);
+    for (const c of n.children) out(c, d + 1, n.account);
+  })(tree, 0, '');
+  const fsOf = a => findUser(tree, a);
+  function findUser(n, a, parent) { if (n.user === 'demo' && parent === a) return n; for (const c of n.children || []) { const r = findUser(c, a, n.account); if (r) return r; } return null; }
+  const fsG = (fsOf('genomes') || {}).fairShare || 0.2, fsS = (fsOf('support-staff') || {}).fairShare || 0.05;
+  const now = Date.now(); const iso = h => new Date(now - h * 3600e3).toISOString().slice(0, 19);
+  const job = (id, part, acct, qos, qp, fs, ageDays, reason, gres, hrsAgo) => ({ id, part, acct, qos, qp, fs, ageDays, reason, gres, hrsAgo });
+  const jobs = [
+    job('41000101', 'gpu', 'support-staff', 'gpu-medium', 2000, fsS, 3.2, '(Priority)', 'gres/gpu:1', 77),
+    job('41000102', 'gpu', 'genomes', 'gpu-short', 5000, fsG, 0.4, '(Resources)', 'gres/gpu:4', 10),
+    job('41000103', 'cpu', 'genomes', 'vlong', 1200, fsG, 0, '(Dependency)', '', 30),
+    job('41000104_[3-20]', 'cpu', 'genomes', 'normal', 0, fsG, 1.1, '(Priority)', '', 26),
+    job('41000105_[1-50]', 'cpu', 'genomes', 'normal', 0, fsG, 0, '(JobHeldUser)', '', 5),
+    job('41000106', 'gpu', 'genomes', 'gpu-short', 5000, fsG, 0, '(QOSMaxWallDurationPerJobLimit)', 'gres/gpu:1', 2),
+    job('41000107', 'cpu', 'support-staff', 'normal', 0, fsS, 0.6, '(AssocGrpBillingMinutes)', '', 15),
+  ];
+  const sprio = ['          JOBID PARTITION     USER  ACCOUNT   PRIORITY       SITE        AGE      ASSOC  FAIRSHARE    JOBSIZE  PARTITION    QOSNAME        QOS        NICE                 TRES'];
+  const pend = [];
+  for (const j of jobs) {
+    const a = Math.round(j.ageDays * 10000 / 30), f = Math.round(j.fs * 12000), q = Math.round(j.qp / 20000 * 8000), js = 15;
+    sprio.push(`${baseId(j.id)} ${j.part} demo ${j.acct} ${a + f + q + js + 1} 0 ${a} 0 ${f} ${js} 1 ${j.qos} ${q} 0 cpu=0,mem=0`);
+    pend.push(`${j.id}|${j.part}|${j.acct}|${j.qos}|1-00:00:00|1|8|${j.gres}|32G|${j.reason}|${iso(j.hrsAgo)}`);
+  }
+  return ['### WHOAMI', 'demo', '### CONFIG', 'PriorityDecayHalfLife   = 15-00:00:00', 'PriorityFlags           = MAX_TRES', 'PriorityMaxAge          = 30-00:00:00', 'PriorityType            = priority/multifactor',
+    'PriorityWeightAge       = 10000', 'PriorityWeightFairShare = 12000', 'PriorityWeightJobSize   = 10000', 'PriorityWeightPartition = 1', 'PriorityWeightQOS       = 8000', 'PrivateData             = none',
+    '### PENDING', ...pend, '### SPRIO', ...sprio, '### QUEUE', ...demoQueue(jobs, rnd),
+    '### PARTITIONS', 'PartitionName=cpu', '   TRESBillingWeights=CPU=1.0,Mem=0.25G', 'PartitionName=gpu', '   TRESBillingWeights=CPU=1.0,Mem=0.08G,GRES/gpu=64', 'PartitionName=gpu-slice', '   TRESBillingWeights=CPU=1.0,Mem=0.08G,GRES/gpu=4', 'PartitionName=consortium', '   TRESBillingWeights=CPU=1.0,Mem=0.1G,GRES/gpu=12',
+    '### QOS', 'normal|0|1.000000', 'vlong|1200|1.000000', 'short|5000|1.000000', 'gpu-short|5000|1.000000', 'gpu-medium|2000|1.000000', 'gpu-long|1000|1.000000', 'test|10000|1.000000', 'dedicated|20000|1.000000',
+    '### SSHARE', ...lines, '### END'].join('\n');
+}
+
+/* ===== loading ===== */
+function setStatus(msg, err) { const s = $('#status'); s.replaceChildren(); s.className = err ? 'err' : ''; if (msg) s.append(msg); }
+function load(text, label) {
+  if (text.length > 80e6) { setStatus('That file is larger than 80 MB, which is bigger than any report file should be. Check that you loaded queue-report.txt.', true); return; }
+  let st; try { st = analyze(text); } catch (e) { $('#results').hidden = true; setStatus(e.message, true); return; }
+  const finish = me => {
+    st.me = me; S = st;
+    if (!st.tree.users.some(u => u.user === me)) { setStatus(`Couldn't find "${me}" in the usage data. Check the spelling, or make sure the file came from your own account.`, true); askUser(st); return; }
+    setStatus(`Loaded ${label}: ${fmt(st.tree.users.length)} drivers, ${plural(Object.keys(st.sprio).length || st.pending.length, 'waiting job')} for you.`);
+    render();
+  };
+  if (st.me) finish(st.me); else askUser(st, finish);
+  function askUser(state, cb) {
+    const inp = el('input', { type: 'text', id: 'whoInput', 'aria-label': 'Your cluster username', placeholder: 'your username' });
+    const go = el('button', { type: 'button', text: 'Find me' });
+    go.onclick = () => { const v = inp.value.trim(); if (v) (cb || finish)(v); };
+    setStatus(el('span', {}, "The file doesn't say who you are. Enter your cluster username:", el('span', { class: 'inline-form' }, inp, go)));
+  }
+}
+
+/* ===== wire up ===== */
+$('#cmd').textContent = COMMAND;
+(function () {
+  const w = $('#rumble'), ts = [...w.querySelectorAll('.t')], z = ts.length - 1, a = ts.map(() => 0); let h = [], box = null;
+  const say = v => {
+    const m = $('#altM');
+    if (!v) { COMMAND = buildCommand(''); m.textContent = ''; m.className = 'small'; }
+    else if (USER_OK.test(v)) { COMMAND = buildCommand(v); m.textContent = `The command now checks ${v}.`; m.className = 'small'; }
+    else { COMMAND = buildCommand(''); m.textContent = 'Usernames can only contain letters, numbers, dots, dashes, and underscores. The command still checks your own jobs.'; m.className = 'small err'; }
+    $('#cmd').textContent = COMMAND;
+  };
+  const show = () => {
+    const u = el('input', { id: 'altU', 'aria-label': 'Cluster username', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'e.g. ab1234' });
+    u.oninput = () => say(u.value.trim());
+    box = el('div', { id: 'alt' },
+      el('p', { class: 'small', text: 'Enter a cluster username and the command above will check their jobs instead of yours. Run it from your own login.' }),
+      el('span', { class: 'inline-form' }, u),
+      el('p', { id: 'altM', class: 'small', role: 'status' }),
+      el('p', {}, el('button', { id: 'ticketBtn', type: 'button', text: 'Copy fairshare summary for a ticket', onclick: copyTicket }), ' ', el('span', { id: 'ticketMsg', class: 'small muted', role: 'status' })),
+      el('textarea', { id: 'ticketText', hidden: true, readonly: true, 'aria-label': 'Ticket summary text' }));
+    w.after(box); w.classList.add('on'); u.focus();
+  };
+  const hide = () => { say(''); box.remove(); box = null; w.classList.remove('on'); h = []; };
+  const go = i => {
+    if (box) return hide();
+    const t = ts[i], now = Date.now();
+    if (i === z) { h = h.filter(x => now - x < 3000); h.push(now); }
+    const n = i === z ? h.length : 1;
+    a[i] += 40 + n * 45; t.style.transform = `rotate(${a[i]}deg)`;
+    w.classList.add('hot'); clearTimeout(w._c); w._c = setTimeout(() => w.classList.remove('hot'), 1500);
+    if (n >= 5 && n < 8) { t.classList.remove('r1'); void t.offsetWidth; t.classList.add('r1'); }
+    if (n >= 8) { h = []; t.classList.add('r2'); setTimeout(() => { t.classList.remove('r1', 'r2'); if (!box) show(); }, 900); }
+  };
+  w.addEventListener('click', e => { const i = ts.indexOf(e.target.closest('.t')); go(i >= 0 ? i : z); });
+  w.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(z); } });
+})();
+async function copyTicket() {
+  if (!S) { $('#ticketMsg').textContent = 'Load a report first (step 2), then copy.'; return; }
+  const t = ticketSummary(); const ta = $('#ticketText'); ta.value = t;
+  try { await navigator.clipboard.writeText(t); ta.hidden = true; $('#ticketMsg').textContent = 'Copied. Paste it into your reply.'; }
+  catch { ta.hidden = false; ta.focus(); ta.select(); $('#ticketMsg').textContent = "Your browser blocked copying, so the text is shown below. It's already selected."; }
+}
+$('#copyBtn').onclick = async () => { try { await navigator.clipboard.writeText(COMMAND); $('#copyBtn').textContent = 'Copied'; } catch { const r = document.createRange(); r.selectNodeContents($('#cmd')); getSelection().removeAllRanges(); getSelection().addRange(r); $('#copyBtn').textContent = 'Press Ctrl+C / Cmd+C'; } setTimeout(() => $('#copyBtn').textContent = 'Copy command', 2500); };
+$('#file').onchange = async e => { const f = e.target.files[0]; if (f) load(await f.text(), f.name); };
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', async e => { const f = e.dataTransfer.files[0]; if (f) load(await f.text(), f.name); });
+$('#demoBtn').onclick = () => load(demoText(), 'made-up demo data');
+(function fitTitle() { // one line, always: shrink from the CSS size until it fits whatever font this device has
+  const h = $('#signTitle');
+  const fit = () => { h.style.fontSize = ''; const r = h.clientWidth / h.scrollWidth; if (r < 1) h.style.fontSize = `${parseFloat(getComputedStyle(h).fontSize) * r * 0.98}px`; };
+  new ResizeObserver(fit).observe(h.parentElement); if (document.fonts) document.fonts.ready.then(fit);
+})();
+(function eastbound() {
+  const lane = $('#laneE');
+  const COLORS = ['#F2F1EC', '#C3C7CA', '#5A5E62', '#1B1D21', '#2B4F8C', '#8E1B24']; // 2025 Subaru Legacy: Crystal White, Ice Silver, Magnetite Gray, Crystal Black, Cosmic Blue, Crimson Red
+  const svg = html => { const d = document.createElement('div'); d.innerHTML = html; return d.firstChild; };
+  const car = c => svg('<svg class="car" viewBox="0 0 44 22">' // seen from above, nose to the right
+    + '<rect class="mir" x="25" y="0" width="3" height="3" rx="1"/><rect class="mir" x="25" y="19" width="3" height="3" rx="1"/>'
+    + '<rect x="1" y="2" width="42" height="18" rx="6" fill="' + c + '" stroke="#fff3" stroke-width=".8"/>'
+    + '<rect class="roof" x="13" y="5" width="11" height="12" rx="2"/>'
+    + '<path class="gls" d="M24 5.5 L29 4.5 Q31.5 11 29 17.5 L24 16.5 Q25.5 11 24 5.5 Z"/><path class="gls" d="M13 6 L9.5 5.5 Q8 11 9.5 16.5 L13 16 Q12 11 13 6 Z"/>'
+    + '<rect class="hl" x="41" y="4" width="2" height="3.5" rx="1"/><rect class="hl" x="41" y="14.5" width="2" height="3.5" rx="1"/>'
+    + '<rect class="tl" x="1" y="4" width="1.6" height="3" rx=".8"/><rect class="tl" x="1" y="15" width="1.6" height="3" rx=".8"/></svg>');
+  const saucer = () => svg('<svg class="ufo" viewBox="0 0 52 52">'
+    + '<circle cx="26" cy="26" r="24" fill="#8E98A1" fill-opacity=".55"/><circle cx="26" cy="26" r="20" fill="#C7CED4" fill-opacity=".3"/>'
+    + Array.from({ length: 8 }, (_, k) => { const a = k * Math.PI / 4; return `<circle class="lt" cx="${(26 + 22 * Math.cos(a)).toFixed(1)}" cy="${(26 + 22 * Math.sin(a)).toFixed(1)}" r="1.8"/>`; }).join('')
+    + '<circle cx="26" cy="26" r="11" fill="#9FE3F2" opacity=".35"/>'
+    + '<ellipse cx="26" cy="26" rx="5" ry="5.6" fill="#6EDB5A"/><ellipse cx="24" cy="25.4" rx="1.4" ry="2" fill="#111"/><ellipse cx="28" cy="25.4" rx="1.4" ry="2" fill="#111"/>'
+    + '<path d="M19 21 Q22 17.5 26 17.5" stroke="#fff" stroke-width="1.6" fill="none" opacity=".7" stroke-linecap="round"/></svg>');
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const top = $('.top'), fit = () => lane.style.setProperty('--lane-h', `${top.offsetHeight - 10}px`); // match the strip above the 10px double yellow
+  fit(); new ResizeObserver(fit).observe(top);
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let busy = false, haltedAt = 0, clearAt = 0, arriveAt = 0;
+  lane.addEventListener('click', async e => {
+    const c = e.target.closest('svg.car'); if (!c || busy) return; busy = true;
+    const cars = lane.getAnimations({ subtree: true }).filter(a => a.effect.target.classList.contains('car'));
+    cars.forEach(a => a.pause()); haltedAt = performance.now(); // everyone stops to watch
+    const x = c.getBoundingClientRect().left - lane.getBoundingClientRect().left + 22;
+    const own = cars.find(a => a.effect.target === c); // pin it with left, not transform: scale would also shrink its translateX and slide it away
+    if (own) { own.cancel(); cars.splice(cars.indexOf(own), 1); c.style.left = `${x - 22}px`; }
+    const ufo = saucer(), beam = el('div', { class: 'beam' }); ufo.style.left = `${x - 26}px`; beam.style.left = `${x - 32}px`;
+    lane.append(beam, ufo);
+    const run = (node, kf, o) => node.animate(kf, { fill: 'forwards', ...o }).finished;
+    if (calm) {
+      await run(beam, [{ opacity: 0 }, { opacity: 1 }], { duration: 300 });
+      await run(c, [{ opacity: 1 }, { opacity: 0 }], { duration: 500 });
+      await run(ufo, [{ opacity: 1 }, { opacity: 0 }], { duration: 400, delay: 300 });
+    } else {
+      beam.style.opacity = 0;
+      await run(ufo, [{ transform: 'translate(90px,-50px) scale(1.9) rotate(-40deg)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 750, easing: 'cubic-bezier(.2,.8,.3,1.15)' });
+      run(beam, [{ opacity: 0 }, { opacity: 1 }, { opacity: .55 }, { opacity: 1 }], { duration: 900 });
+      await run(c, [{ filter: 'none' }, { filter: 'brightness(2.4) saturate(.4)' }, { filter: 'none' }], { duration: 300, delay: 200 });
+      await run(c, [{ scale: 1 }, { scale: 0 }], { duration: 900, easing: 'cubic-bezier(.5,0,.75,0)' });
+      run(beam, [{ opacity: 1 }, { opacity: 0 }], { duration: 300 });
+      await run(ufo, [{ transform: 'none' }, { transform: 'rotate(12deg)' }, { transform: 'rotate(-12deg)' }, { transform: 'none' }], { duration: 450 });
+      await run(ufo, [{ transform: 'none', opacity: 1 }, { transform: 'scale(2.6)', opacity: 0 }], { duration: 500, easing: 'ease-in' });
+    }
+    c.remove(); ufo.remove(); beam.remove();
+    const paused = performance.now() - haltedAt; clearAt += paused; arriveAt += paused; haltedAt = 0;
+    cars.forEach(a => { if (a.playState === 'paused') a.play(); }); busy = false;
+  });
+
+  if (calm) { // parked, not driving
+    [0.12, 0.47, 0.81].forEach(x => { const c = car(pick(COLORS)); c.style.left = `${x * 100}%`; lane.append(c); }); return;
+  }
+  // One lane, no passing: a new car waits until the one ahead has cleared the ramp, and never drives fast enough to reach it.
+  const GAP = 70; // px of road a car needs to itself (body is 40)
+  const spawn = () => {
+    const w = lane.clientWidth, now = performance.now();
+    if (w && !document.hidden && !haltedAt && now >= clearAt && lane.querySelectorAll('svg.car').length < 14) {
+      const dist = w + 48; let v = 0.06 + Math.random() * 0.22; // px per ms: 60–280 px/s
+      if (arriveAt > now) v = Math.min(v, (dist - GAP) / (arriveAt - now)); // slow enough to still be GAP behind when the car ahead exits
+      const dur = dist / v; clearAt = now + GAP / v; arriveAt = now + dur;
+      const c = car(pick(COLORS)); lane.append(c);
+      c.animate([{ transform: 'translateX(-44px)' }, { transform: `translateX(${w + 4}px)` }], { duration: dur, easing: 'linear' }).onfinish = () => c.remove();
+    }
+    setTimeout(spawn, now < clearAt ? clearAt - now + 50 : 400 + Math.random() * 3600);
+  };
+  spawn();
+})();
+$('#themeBtn').onclick = () => { const d = document.documentElement; const dark = d.dataset.theme ? d.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; d.dataset.theme = dark ? 'light' : 'dark'; };
+const gb = $('#gloss tbody'); THEME.gloss.forEach(([a, b, c]) => gb.append(el('tr', {}, el('td', { text: a }), el('td', { text: b }), el('td', { text: c }))));
+
+</script>
+</body>
+</html>
