@@ -1265,8 +1265,9 @@ function ticketSummary() {
   for (const u of S.mine) {
     L.push('', `${u.account}: fairshare ${u.fairShare.toFixed(3)}, ahead of ${Math.round(percentAhead(u) * 100)}% of users`);
     let drag = null;
-    for (const n of chain(u)) {
-      const sibs = sortSibs(n.parent.children.filter(c => shown(c) || c === n)), rank = sibs.indexOf(n) + 1;
+    const full = chain(u);
+    for (const n of full.length > 1 ? full.slice(1) : full) { // skip the top-level split, as the line view does
+      const sibs = sortSibs(n.parent.children.filter(c => c.user !== 'root' && (shown(c) || c === n))), rank = sibs.indexOf(n) + 1;
       L.push(`  - ${n.user ? `${n.user} (user)` : n.account}: rank ${rank} of ${sibs.length}, ${usage(n)}`);
       if (!drag && rank > 1) drag = { n, rank, of: sibs.length }; // Fair Tree settles the top level first, so the first level not in first place matters most
     }
