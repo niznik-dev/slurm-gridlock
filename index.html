@@ -1273,7 +1273,7 @@ function ticketSummary() {
     }
     L.push(drag ? `  Biggest factor: ${drag.n.user ? 'the user' : drag.n.account} ranks ${drag.rank} of ${drag.of} at its level, ${usage(drag.n)}.` : '  Ranked first at every level.');
   }
-  if (Number.isFinite(S.halfLife) && S.halfLife > 0) L.push('', `Usage decays with a ${fmt(S.halfLife, 1)}-day half-life.`);
+  if (Number.isFinite(S.halfLife) && S.halfLife > 0) L.push('', `(Usage decays with a ${fmt(S.halfLife, 1)}-day half-life.)`);
   return L.join('\n');
 }
 
