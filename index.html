@@ -679,6 +679,16 @@ function readout(st) { if (st.key === 'open') return '0%'; if (st.ratio === Infi
 // Separately run top-level pools whose queues aren't public: the data for them can't be trusted, so they're left out of every view.
 const HIDDEN_POOLS = /^(ailab|pli)([-_]|$)/i;
 const shown = n => !(n.parent && !n.parent.parent && !n.user && HIDDEN_POOLS.test(n.account));
+const poolName = a => /^ailab/i.test(a) ? 'AI Lab' : 'PLI';
+const POOL_NOTE = 'AI Lab and PLI are run separately, with their own queues and hardware. This report doesn’t cover them, so it can’t say much about what happens there.';
+const OWN_CLUSTERS = { cs: 'The computer science department also runs its own cluster(s), which this report can’t see either.' };
+const listAnd =a => a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`;
+function poolOverlap() { // groups where many members also hold hidden-pool accounts: their usage here may be only part of the picture
+  const inPool = new Set(), members = new Map(), out = new Map();
+  for (const u of S.tree.users) { const c = chain(u); if (!shown(c[0])) { inPool.add(u.user); continue; } for (const n of c.slice(0, -1)) { if (!members.has(n)) members.set(n, new Set()); members.get(n).add(u.user); } }
+  for (const [n, m] of members) { if (!n.parent || !n.parent.parent || m.size < 20) continue; const k = [...m].filter(x => inPool.has(x)).length; if (k / m.size >= 0.25) out.set(n, k / m.size); }
+  return out;
+}
 function chain(n) { const c = []; for (let x = n; x && x.parent; x = x.parent) c.unshift(x); return c; } // excludes root
 function percentAhead(u) { const us = S.tree.users; const below = us.filter(x => x.fairShare < u.fairShare).length; return us.length > 1 ? below / (us.length - 1) : 1; }
 function spotRank(u) { return 1 + S.tree.users.filter(x => x.fairShare > u.fairShare).length; }
@@ -698,6 +708,7 @@ function render() {
   for (const n of S.tree.all) if (!n.user && n.parent && n.parent.parent && n.normShares > 0 && n.effUsage > 0 && n.levelFS > 0 && Number.isFinite(n.levelFS)) {
     const r = 1 / n.levelFS; if (!S.worst || r > S.worst.ratio) S.worst = { node: n, ratio: r };
   }
+  S.overlap = poolOverlap();
   $('#results').hidden = false;
   $('#viewingAs').replaceChildren('Showing results for ', el('b', { text: S.me }), '.');
   if ($('#ticketText')) { $('#ticketText').hidden = true; $('#ticketMsg').textContent = ''; }
@@ -1028,6 +1039,7 @@ function renderLine() {
   const box = $('#lineBody'); box.replaceChildren();
   const me = S.mine[activeAcct]; if (!me) { box.append(el('p', {}, 'No accounts found for you.')); return; }
   const full = chain(me); const path = full.length > 1 ? full.slice(1) : full; // skip the top-level split (campus vs. separately funded pools)
+  let poolNoted = false; const poolNote = () => poolNoted ? '' : (poolNoted = true, ' ' + POOL_NOTE);
   path.forEach((node, li) => {
     const parent = node.parent; const sibs = sortSibs(parent.children.filter(c => c.user !== 'root'));
     const rank = sibs.indexOf(node) + 1; const st = statusOf(node); const isUser = !!node.user;
@@ -1045,6 +1057,7 @@ function renderLine() {
     if (st.inherited) say += ` ${subj} ${isUser ? 'share' : 'shares'} ${parent.account}’s reading (RawShares=parent), so this reading is ${parent.account}’s.`;
     if (st.key === 'noshare') say += ' Groups with no share merge behind every neighbor at this level that has one. With no share of the road at all, it’s pedaling a bicycle.';
     card.append(el('p', { text: say }));
+    if (S.overlap.has(node)) card.append(el('p', { class: 'small muted' }, `${Math.round(S.overlap.get(node) * 100)}% of ${node.account}’s members also have AI Lab or PLI accounts. Much of this group’s computing may be set up and counted there instead, so its share and usage here may not tell the whole story.${OWN_CLUSTERS[node.account] ? ' ' + OWN_CLUSTERS[node.account] : ''}${poolNote()}`));
     const list = el('ul', { class: 'mills' });
     const idx = rank - 1; const show = new Set();
     if (sibs.length <= 12) sibs.forEach((_, i) => show.add(i));
@@ -1066,7 +1079,14 @@ function renderLine() {
     if (sibs.length > 12) { const b = el('button', { type: 'button', class: 'link showall', text: `Show all ${sibs.length}` }); b.onclick = () => { const all = b.dataset.all !== '1'; b.dataset.all = all ? '1' : '0'; b.textContent = all ? 'Show fewer' : `Show all ${sibs.length}`; draw(all); }; card.append(b); }
     box.append(card);
   });
-  if (S.worst && S.worst.ratio > 2) box.append(el('p', { class: 'small muted' }, `The roughest ride on this cluster belongs to ${S.worst.node.account}, at ${fmt(Math.round(S.worst.ratio * 100))}% of its share. Every other car's sputter, smoke and flames are scaled against it.`));
+  if (S.worst && S.worst.ratio > 2) box.append(el('p', { class: 'small muted' }, `The roughest ride on this cluster belongs to ${S.worst.node.account}, at ${fmt(Math.round(S.worst.ratio * 100))}% of its share. Every other car's sputter, smoke and flames are scaled against it.` + (S.overlap.has(S.worst.node) ? ` Many of its members also compute in AI Lab or PLI, so this reading may not tell the whole story.` : '')));
+  const top = full[0], tops = sortSibs(top.parent.children.filter(c => !c.user));
+  const ahead = tops.slice(0, tops.indexOf(top)).filter(t => !shown(t) && S.tree.users.some(u => chain(u)[0] === t));
+  const ceil = Math.max(...S.tree.users.filter(u => chain(u)[0] === top).map(u => u.fairShare));
+  if (shown(top) && ahead.length && ceil < 0.995) {
+    const names = [...new Set(ahead.map(t => poolName(t.account)))];
+    box.append(el('p', { class: 'small muted' }, `Why nobody in ${top.account} scores 1.0: at the very top level, ${listAnd(names)} ${names.length > 1 ? 'rank' : 'ranks'} ahead of ${top.account} right now, so every one of ${names.length > 1 ? 'their' : 'its'} members merges before anyone here. The best score in ${top.account} today is ${ceil.toFixed(3)}.${poolNote()}`));
+  }
   box.append(el('p', { class: 'small muted' }, `Put together, ${S.helper ? `${S.me} ends` : 'you end'} up at ${me.fairShare.toFixed(3)} in the merge order. Usage readings are each group's recent driving divided by its share, compared only with its neighbors at that level.`));
   renderMath(box, me);
 }
