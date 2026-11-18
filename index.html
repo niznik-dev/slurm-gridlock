@@ -238,6 +238,12 @@ td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
 .gloss-title::after{ content:" ▸"; color:var(--muted); }
 .gloss-box[open] .gloss-title::after{ content:" ▾"; }
 .gloss-box .tablewrap{ margin-top:.6rem; }
+.math-box{ margin-top:1rem; }
+.math-box .gloss-title{ font-size:1.1rem; }
+.math-body{ padding:.4rem .2rem 0; }
+.math-body code{ font-size:.88em; overflow-wrap:anywhere; }
+.math-body tr.you td{ font-weight:700; }
+.math-body td.num{ white-space:nowrap; }
 @media (max-width:560px){ .split-row{ grid-template-columns:1fr; gap:.3rem; } }
 #tollBox>summary{ list-style:none; cursor:pointer; display:flex; flex-direction:column; gap:.2rem; color:#fff; margin:0; }
 #tollBox>summary::-webkit-details-marker{ display:none; }
@@ -1062,6 +1068,51 @@ function renderLine() {
   });
   if (S.worst && S.worst.ratio > 2) box.append(el('p', { class: 'small muted' }, `The roughest ride on this cluster belongs to ${S.worst.node.account}, at ${fmt(Math.round(S.worst.ratio * 100))}% of its share. Every other car's sputter, smoke and flames are scaled against it.`));
   box.append(el('p', { class: 'small muted' }, `Put together, ${S.helper ? `${S.me} ends` : 'you end'} up at ${me.fairShare.toFixed(3)} in the merge order. Usage readings are each group's recent driving divided by its share, compared only with its neighbors at that level.`));
+  renderMath(box, me);
+}
+
+/* ----- the formula, in Slurm terms, with this person's own numbers ----- */
+function renderMath(box, me) {
+  const sig = v => !Number.isFinite(v) ? (v === Infinity ? '∞' : '—') : v === 0 ? '0' : Math.abs(v) >= 1000 ? fmt(v) : +v.toPrecision(3) + '';
+  const code = t => el('code', { text: t });
+  const d = el('details', { class: 'gloss-box math-box' },
+    el('summary', {}, el('span', { class: 'gloss-title', text: 'Show the math' }), el('span', { class: 'small muted', text: `How Slurm turns shares and usage into ${S.helper ? `${S.me}’s` : 'your'} ${me.fairShare.toFixed(3)}, step by step.` })));
+  const body = el('div', { class: 'math-body' }); d.append(body);
+  const w = S.weights.fs; let step = 0; const B = t => el('b', { text: `${++step}. ${t} ` });
+  if (Number.isFinite(S.halfLife) && S.halfLife > 0)
+    body.append(el('p', {}, B('Usage fades.'), 'Every past job adds to ', code('RawUsage'), `, and that contribution halves every ${fmt(S.halfLife, 1)} days: `, code(`usage × 0.5^(days ago ÷ ${fmt(S.halfLife, 1)})`), '.'));
+  if (!S.fairTree) {
+    const u = me;
+    body.append(el('p', {}, B('Classic fairshare.'), 'This cluster doesn’t use Fair Tree, so each person’s factor comes straight from their own share and usage: ', code('FairShare = 2^(−EffectvUsage ÷ NormShares)'),
+      ` = 2^(−${sig(u.effUsage)} ÷ ${sig(u.normShares)}) ≈ ${sig(Math.pow(2, -u.effUsage / u.normShares))}. Slurm reports ${u.fairShare.toFixed(3)}.`));
+  } else {
+    body.append(el('p', {}, B('Each level gets a score.'), 'At every level of the tree, each account (or person) is compared only with its siblings:'),
+      el('ul', { class: 'small' },
+        el('li', {}, code('NormShares = RawShares ÷ siblings’ total RawShares')),
+        el('li', {}, code('EffectvUsage = RawUsage ÷ parent’s RawUsage')),
+        el('li', {}, code('LevelFS = NormShares ÷ EffectvUsage'), ' (above 1 means under share; no usage at all means ∞)')));
+    const tb = el('tbody');
+    chain(me).forEach((n, li) => {
+      const p = n.parent, sibs = sortSibs(p.children.filter(c => c.user !== 'root'));
+      const tot = sibs.reduce((a, c) => a + (Number.isFinite(c.rawShares) ? c.rawShares : 0), 0);
+      tb.append(el('tr', { class: n === me ? 'you' : '' },
+        el('td', { text: String(li + 1) }), el('td', { text: n.user ? (S.helper ? n.user : `${n.user} (you)`) : n.account }),
+        el('td', { class: 'num', text: n.parentShares ? 'parent' : `${sig(n.rawShares)} ÷ ${sig(tot)} = ${sig(n.normShares)}` }),
+        el('td', { class: 'num', text: `${sig(n.rawUsage)} ÷ ${sig(p.rawUsage)} = ${sig(n.effUsage)}` }),
+        el('td', { class: 'num', text: sig(n.levelFS) }),
+        el('td', { class: 'num', text: `${sibs.indexOf(n) + 1} of ${sibs.length}` })));
+    });
+    body.append(el('div', { class: 'tablewrap' }, el('table', {},
+      el('thead', {}, el('tr', {}, ...['Level', 'Account / user', 'NormShares', 'EffectvUsage', 'LevelFS', 'Rank'].map((t, i) => el('th', { class: i > 1 ? 'num' : '', text: t })))), tb)),
+      el('p', { class: 'small muted', text: 'Shares and usage come straight from sshare; the divisions may be off in the last digit from rounding.' }));
+    const us = S.tree.users, N = us.length, k = us.filter(x => x.fairShare <= me.fairShare).length, est = k / N;
+    body.append(el('p', {}, B('Rank everyone.'), 'Siblings are sorted by LevelFS, highest first, and Slurm walks the tree in that order, top level down. Every person inside a better-ranked account lands ahead of everyone in a worse-ranked one, no matter their own usage.'),
+      el('p', {}, B('Rank becomes FairShare.'), code('FairShare = (people ranked at or behind you) ÷ (all people)'),
+        ` = ${fmt(k)} ÷ ${fmt(N)} ${Math.abs(est - me.fairShare) < 0.0015 ? '=' : '≈'} ${me.fairShare.toFixed(3)}. First place gets 1.0; last gets 1 ÷ ${fmt(N)}.`));
+  }
+  if (w) body.append(el('p', {}, B('FairShare becomes priority.'), code('fairshare priority = FairShare × PriorityWeightFairShare'),
+    ` = ${me.fairShare.toFixed(3)} × ${fmt(w)} = ${fmt(me.fairShare * w)} points on every job ${S.helper ? 'they submit' : 'you submit'} from ${me.account}.`));
+  box.append(d);
 }
 
 /* ----- the whole sheet ----- */
